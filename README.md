@@ -135,7 +135,7 @@ docker run -it -e DISPLAY=$DISPLAY \
   -v ~/data/grand_tour_box/datasets:/root/data/grand_tour_box/datasets \
   --name resple resple
 ```
-Note: To recompile inside the docker container run `colcon build --packages-select resple`. If no development is indended, then one can omit `-v .:/root/ros2_ws/src/RESPLE`.
+Note: To recompile inside the docker container run `colcon build --packages-up-to resple`. If no development is intended, then one can omit `-v .:/root/ros2_ws/src/RESPLE`.
 
 Replacing `<filename>` with the launch file from above, launch with:
 ```bash
