@@ -77,6 +77,9 @@ public:
             } else if (!lidar.type.compare("Mid360Boxi")) {
                 sub_livox_mid360_boxi = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
                         lidar.topic, 200000, std::bind(&RESPLE::livoxMid360BoxiCallback, this, std::placeholders::_1));
+            } else if (!lidar.type.compare("RSHelios")) {
+                sub_rs_helios_lidar = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
+                        lidar.topic, 200000, std::bind(&RESPLE::rsHeliosCallback, this, std::placeholders::_1));
             }
         }        
     }
@@ -188,6 +191,7 @@ private:
     rclcpp::Subscription<livox_interfaces::msg::CustomMsg>::SharedPtr sub_livox_avia;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_hesai;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_livox_mid360_boxi;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_rs_helios_lidar;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cur_scan;
     rclcpp::Publisher<estimate_msgs::msg::Estimate>::SharedPtr pub_est;
     rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr pub_start_time;
@@ -576,6 +580,60 @@ private:
                     rcl_clock_type_t::RCL_ROS_TIME);
                 pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3;
                 pt.curvature = pc_last_livox->points[i].intensity;
+                if (pt.intensity >= 0 && pt.x*pt.x+pt.y*pt.y+pt.z*pt.z > (blind * blind) && CommonUtils::ms2ns(pt.intensity) + time_begin > last_t_ns) {
+                    int64_t ofs = CommonUtils::ms2ns(pt.intensity);
+                    max_ofs_ns = max_ofs_ns > ofs ? max_ofs_ns : ofs;
+                    pc_last->points.push_back(pt);
+                }
+            }
+        }
+        LidarData& lidar_buffs = lidars_data.at(name);
+        lidar_buffs.mtx_pc.lock();
+        lidar_buffs.pc_buff.push_back(pc_last->points);
+        lidar_buffs.t_buff.push_back(time_begin);
+        lidar_buffs.mtx_pc.unlock();     
+        last_t_ns = time_begin + max_ofs_ns;   
+	}      
+
+    void rsHeliosCallback(const sensor_msgs::msg::PointCloud2::SharedPtr rs_helios_msg_in)
+	{
+        std::string name = "RSHelios";
+        const LidarConfig& lidar = lidars.at(name);   
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());     
+        pcl::PointCloud<pcl::PointXYZI>::Ptr pc_last_rs_helios(new pcl::PointCloud<pcl::PointXYZI>());
+        pcl::fromROSMsg(*rs_helios_msg_in, *pc_last_rs_helios);
+        size_t plsize = pc_last_rs_helios->size();
+        if (plsize == 0) return;
+        pc_last->reserve(plsize);
+        // WARNING: We assume pointcloud timestamp is the start of the scan, but this depends on the driver
+        rclcpp::Time timestamp_begin = rclcpp::Time(rs_helios_msg_in->header.stamp);
+        // rclcpp::Time timestamp_begin = rclcpp::Time(rs_helios_msg_in->header.stamp) - rclcpp::Duration(0, 100000000);
+        int64_t time_begin = timestamp_begin.nanoseconds();
+        static int64_t last_t_ns = time_begin;
+        int64_t max_ofs_ns = 0;         
+        pcl::PointXYZINormal pt;
+        float blind = lidar.blind;
+        // WARNING: We assume 10Hz rate but this depends on the driver
+        float spin_rate = 10.0f; // Hz
+        float spin_period = 1.0e3f / spin_rate; // ms
+        // float phase_shift = 0.0f; // first collected point has phase shift from x-axis on xy plane.
+        for (unsigned int i = 0; i < plsize; ++i) {
+            if (i % point_filter_num == 0) {
+                pt.x = pc_last_rs_helios->points[i].x;
+                pt.y = pc_last_rs_helios->points[i].y;
+                pt.z = pc_last_rs_helios->points[i].z;
+                float azimuth = -std::atan2(pt.y, pt.x); // [pi, -pi] since lidar turns clockwise from top
+                if (azimuth < 0.0f) {
+                    azimuth += 2.0f * M_PI; // [0, 2pi]
+                }
+                // azimuth += phase_shift; // [phase_shift, 2pi + phase_shift]
+                // if (azimuth < 0.0f) {
+                //     azimuth += 2.0f * M_PI; // [0, 2pi]
+                // } else if (azimuth >= 2.0f * M_PI) {
+                //     azimuth -= 2.0f * M_PI; // [0, 2pi]
+                // }
+                pt.intensity = spin_period * azimuth / (2.0f * M_PI); // ms
+                pt.curvature = pc_last_rs_helios->points[i].intensity;
                 if (pt.intensity >= 0 && pt.x*pt.x+pt.y*pt.y+pt.z*pt.z > (blind * blind) && CommonUtils::ms2ns(pt.intensity) + time_begin > last_t_ns) {
                     int64_t ofs = CommonUtils::ms2ns(pt.intensity);
                     max_ofs_ns = max_ofs_ns > ofs ? max_ofs_ns : ofs;

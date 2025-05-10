@@ -409,6 +409,71 @@ class Mid360BoxiBuff : public MappingBase<pcl::PointXYZINormal>
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc_subscription_mid360;
 };
 
+class RsHeliosBuff : public MappingBase<pcl::PointXYZINormal>
+{
+  public:
+  RsHeliosBuff(rclcpp::Node::SharedPtr &nh, const LidarConfig& lidar_config) : MappingBase<pcl::PointXYZINormal>(nh, lidar_config)
+    {
+        pc_subscription_lidar = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
+            this->lidar.topic, 100, std::bind(&RsHeliosBuff::rsHeliosCallback, this, std::placeholders::_1));
+    }
+
+    void rsHeliosCallback(const sensor_msgs::msg::PointCloud2::SharedPtr rs_helios_msg_in)
+    {
+        this->pc_last->clear();
+        pcl::PointCloud<pcl::PointXYZI>::Ptr pc_last_rs_helios(new pcl::PointCloud<pcl::PointXYZI>());
+        pcl::fromROSMsg(*rs_helios_msg_in, *pc_last_rs_helios);
+        size_t plsize = pc_last_rs_helios->size();
+        if (plsize == 0) return;
+        this->pc_last->reserve(plsize);
+        // WARNING: We assume pointcloud timestamp is the start of the scan, but this depends on the driver
+        rclcpp::Time timestamp_begin = rclcpp::Time(rs_helios_msg_in->header.stamp);
+        // rclcpp::Time timestamp_begin = rclcpp::Time(rs_helios_msg_in->header.stamp) - rclcpp::Duration(0, 100000000);
+        pcl::PointXYZINormal pt;
+        // WARNING: We assume 10Hz rate but this depends on the driver
+        float spin_rate = 10.0f; // Hz
+        float spin_period = 1.0e3f / spin_rate; // ms
+        // float phase_shift = 0.0f; // first collected point has phase shift from x-axis on xy plane.
+        for (uint i = 0; i < plsize; i++) {
+            pt.x = pc_last_rs_helios->points[i].x;
+            pt.y = pc_last_rs_helios->points[i].y;
+            pt.z = pc_last_rs_helios->points[i].z;
+            float azimuth = -std::atan2(pt.y, pt.x); // [pi, -pi] since lidar turns clockwise from top
+            if (azimuth < 0.0f) {
+                azimuth += 2.0f * M_PI; // [0, 2pi]
+            }
+            // azimuth += phase_shift; // [phase_shift, 2pi + phase_shift]
+            // if (azimuth < 0.0f) {
+            //     azimuth += 2.0f * M_PI; // [0, 2pi]
+            // } else if (azimuth >= 2.0f * M_PI) {
+            //     azimuth -= 2.0f * M_PI; // [0, 2pi]
+            // }
+            pt.intensity = spin_period * azimuth / (2.0f * M_PI); // ms
+            pt.curvature = pc_last_rs_helios->points[i].intensity;
+
+            if (pt.intensity >= 0) {
+                this->pc_last->points.push_back(pt);
+            }
+        }
+        this->pc_last->header.frame_id = this->frame_id;
+        this->pc_last->header.stamp = rclcpp::Time(rs_helios_msg_in->header.stamp).nanoseconds();
+        std::vector<int> indices;
+        pcl::removeNaNFromPointCloud(*this->pc_last, *this->pc_last, indices);
+        if (this->pc_last->points.empty()) return;
+        ds_filter_each_scan.setInputCloud(pc_last);
+        this->pc_last_ds->clear();
+        ds_filter_each_scan.filter(*this->pc_last_ds);
+        pc_last_ds->header.frame_id = this->frame_id;
+        pc_last_ds->header.stamp = rclcpp::Time(rs_helios_msg_in->header.stamp).nanoseconds();
+        mtx.lock();
+        this->pc_L_buff.push_back(*pc_last_ds);
+        mtx.unlock();
+    }
+
+  private:
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc_subscription_lidar;
+};
+
 class Mapping
 {
 
@@ -614,6 +679,8 @@ int main(int argc, char** argv) {
             buffs.push_back(new HesaiBuff(nh, lidar));
         } else if (!lidar.type.compare("Mid360Boxi")) {
             buffs.push_back(new Mid360BoxiBuff(nh, lidar));
+        } else if (!lidar.type.compare("RSHelios")) {
+            buffs.push_back(new RsHeliosBuff(nh, lidar));
         } else {
             exit(1);
         }
