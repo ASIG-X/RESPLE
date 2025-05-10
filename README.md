@@ -43,7 +43,7 @@ To build a docker image capable of running the examples and dataset:
 cd ~/path/to/src
 git clone --recursive git@github.com:ASIG-X/RESPLE.git
 cd RESPLE
-docker build --ssh default --tag lidar_spline_filter .
+docker build --ssh default --tag resple .
 ```
 
 ## Own experimental datasets ([LINK to SURFdrive](https://surfdrive.surf.nl/files/index.php/s/lfXfApqVXTLIS9l)) 
@@ -133,7 +133,7 @@ docker run -it -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix/:/tmp/.X11-unix/ \
   -v ~/data/resple_dataset/:/root/data/resple_dataset \
   -v ~/data/grand_tour_box/datasets:/root/data/grand_tour_box/datasets \
-  --name lidar_spline_filter lidar_spline_filter
+  --name resple resple
 ```
 Note: To recompile inside the docker container run `colcon build --packages-select resple`. If no development is indended, then one can omit `-v .:/root/ros2_ws/src/RESPLE`.
 
@@ -144,7 +144,7 @@ ros2 launch resple <filename>.launch.py
 
 Create a second terminal attached to the container with:
 ```bash
-docker exec -it lidar_spline_filter bash
+docker exec -it resple bash
 ```
 
 In this second container, replacing `<example>/<filename>` to make a valid bag filepath, play the dataset:
@@ -155,19 +155,19 @@ ros2 bag play ~/data/resple_dataset/<example>/
 If the container is already run, then:
 * It can be removed with:
 ```bash
-docker rm lidar_spline_filter
+docker rm resple
 ```
 * It can be started with:
 ```bash
-docker start lidar_spline_filter
+docker start resple
 ```
 * It can be be attached to with:
 ```bash
-docker attach lidar_spline_filter
+docker attach resple
 ```
 * It can be stopped with:
 ```bash
-docker stop lidar_spline_filter
+docker stop resple
 ```
 
 ## Contributors
