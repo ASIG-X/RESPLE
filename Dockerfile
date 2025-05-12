@@ -31,21 +31,18 @@ RUN apt install -y ros-humble-rosbag2-storage-mcap
 # Install gdb support
 RUN apt install -y gdb gdbserver
 
+# Add colcon bash completion
+RUN echo "source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash" >> $HOME/.bashrc
+
 # Create ROS2 Workspace
 RUN mkdir -p $HOME/ros2_ws/src
 
 # Build workspace packages, mounting only for the build
 WORKDIR $HOME/ros2_ws
-RUN --mount=type=bind,destination=$HOME/ros2_ws/src/lidarSplineFilter source /opt/ros/humble/setup.bash && \
+RUN --mount=type=bind,destination=$HOME/ros2_ws/src/RESPLE source /opt/ros/humble/setup.bash && \
     colcon build \
     --cmake-args -DCMAKE_BUILD_TYPE=Release \
-    --packages-select \
-    estimate_msgs \
-    livox_ros_driver \
-    livox_interfaces \
-    livox_ros_driver2 \
-    mocap4r2_msgs \
-    resple
+    --packages-up-to resple
 
 # Add workspace to default source
 RUN echo "source $HOME/ros2_ws/install/setup.bash" >> $HOME/.bashrc
