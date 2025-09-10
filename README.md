@@ -72,6 +72,7 @@ Password: RESPLE2025
 * 8 indoor sequences with dynamic motions: 3 fully captured in a test field with an 8-camera motion capture system, and 5 starting and ending in the test field but extending into a larger hall without motion capture
 * Ground truth trajectory recorded only within this test field using the motion capture system (Qualisys) with passive markers
 
+**Please refer to our [dataset website](https://asig-x.github.io/resple_web/datasets.html) for more information.**
 ## Usage
 For LIO use, change `if_lidar_only` in `resple/config/config_xxx.yaml` to `false`. 
 
@@ -88,6 +89,15 @@ ros2 bag play /path/to/bag/
 ```
 source install/setup.bash
 ros2 launch resple resple_r_campus.launch.py
+# Open another terminal and run
+source install/setup.bash
+ros2 bag play /path/to/bag/
+```
+* [TudoRun](https://surfdrive.surf.nl/files/index.php/s/lfXfApqVXTLIS9l) dataset (Livox Mid360)
+
+```
+source install/setup.bash
+ros2 launch resple resple_tudorun01.launch.py
 # Open another terminal and run
 source install/setup.bash
 ros2 bag play /path/to/bag/
