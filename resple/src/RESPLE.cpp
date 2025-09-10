@@ -34,17 +34,18 @@ class RESPLE
 {
 
 public:
-    RESPLE(rclcpp::Node::SharedPtr& nh) 
+    RESPLE(rclcpp::Node::SharedPtr& nh)
     {
         readParameters(nh);
         if (!if_lidar_only) {
             std::string imu_type = CommonUtils::readParam<std::string>(nh, "topic_imu");
             sub_imu = nh->create_subscription<sensor_msgs::msg::Imu>(imu_type, 2000000, std::bind(&RESPLE::getImuCallback, this, std::placeholders::_1));
-        }        
+        }
         pub_est = nh->create_publisher<estimate_msgs::msg::Estimate>("est_window", 50);
         pub_start_time = nh->create_publisher<std_msgs::msg::Int64>("start_time", 50);
+        pub_pose = nh->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 50);
         pub_cur_scan = nh->create_publisher<sensor_msgs::msg::PointCloud2>("current_scan", 2);
-        br = std::make_shared<tf2_ros::TransformBroadcaster>(nh);        
+        br = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
         auto lidar_names = nh->declare_parameter<std::vector<std::string>>("lidars", std::vector<std::string>());
         assert(nh->get_parameter({"lidars"}, lidar_names));
         if (lidar_names.empty()) {
@@ -57,7 +58,7 @@ public:
                 lidars.emplace(lidar.type, lidar);
                 lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
             }
-        }    
+        }
         for (const auto& [lidar_name, lidar] : lidars) {
             if (!lidar.type.compare("Ouster")) {
                 sub_ouster = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -78,7 +79,7 @@ public:
                 sub_livox_mid360_boxi = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
                         lidar.topic, 200000, std::bind(&RESPLE::livoxMid360BoxiCallback, this, std::placeholders::_1));
             }
-        }        
+        }
     }
 
     void processData()
@@ -86,7 +87,7 @@ public:
         rclcpp::Rate rate(20);
         int64_t max_spl_knots = 0;
         int64_t t_last_map_upd = 0;
-        while (true) {      
+        while (true) {
             for (auto& [lidar_name, lidar_data] : lidars_data) {
                 while (!lidar_data.t_buff.empty()) {
                     pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_frame(new pcl::PointCloud<pcl::PointXYZINormal>());
@@ -109,7 +110,7 @@ public:
                         lidar_data.pt_buff.push_back(pt);
                     }
                 }
-            }            
+            }
             if (!if_lidar_only && !imu_int_buff.empty()) {
                 m_buff.lock();
                 Eigen::aligned_vector<sensor_msgs::msg::Imu::SharedPtr> imu_buff_msg = imu_int_buff;
@@ -121,7 +122,7 @@ public:
                     Eigen::Vector3d acc(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z);
                     if (acc_ratio) acc *= 9.81;
                     Eigen::Vector3d gyro(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
-                    ImuData imu(t_ns, gyro, acc); 
+                    ImuData imu(t_ns, gyro, acc);
                     imu_buff.push_back(imu);
                 }
             }
@@ -133,22 +134,22 @@ public:
                 int64_t max_time_ns = pt_meas.back().time_ns;
                 if (if_lidar_only) {
                     estimator_lo.propRCP(max_time_ns);
-                    estimator_lo.updateIEKFLiDAR(pt_meas, &ikdtree, param.nn_thresh, param.coeff_cov);  
+                    estimator_lo.updateIEKFLiDAR(pt_meas, &ikdtree, param.nn_thresh, param.coeff_cov);
                 } else {
                     if (!imu_meas.empty()) {
                         max_time_ns = std::max(imu_meas.back().time_ns, max_time_ns);
                     }
                     while (!imu_meas.empty() && imu_meas.front().time_ns < spline->maxTimeNs() - spline->getKnotTimeIntervalNs()) {
                         imu_meas.pop_front();
-                    }                         
+                    }
                     estimator_lio.propRCP(max_time_ns);
-                    estimator_lio.updateIEKFLiDARInertial(pt_meas, &ikdtree, param.nn_thresh, imu_meas, gravity, param.cov_acc, param.cov_gyro, param.coeff_cov);  
+                    estimator_lio.updateIEKFLiDARInertial(pt_meas, &ikdtree, param.nn_thresh, imu_meas, gravity, param.cov_acc, param.cov_gyro, param.coeff_cov);
                 }
                 #pragma omp parallel for num_threads(NUM_OF_THREAD)
                 for (size_t i = 0; i < pt_meas.size(); i++) {
-                    PointData& pt_data = pt_meas[i];            
+                    PointData& pt_data = pt_meas[i];
                     Association::pointBodyToWorld(pt_data.time_ns, spline, pt_data.pt, pt_data.pt_w, pt_data.t_bl, pt_data.q_bl);
-                }            
+                }
                 for (size_t i = 0; i < pt_meas.size(); i++) {
                     PointData& pt_data = pt_meas[i];
                     pc_world.points.push_back(pt_data.pt_w);
@@ -162,8 +163,21 @@ public:
                     est_msg.spline = spline_msg;
                     est_msg.if_full_window.data = (spline->numKnots() >= 4);
                     est_msg.runtime.data = 0;
-                    pub_est->publish(est_msg);  
-                    max_spl_knots = spline->numKnots();       
+                    pub_est->publish(est_msg);
+                    max_spl_knots = spline->numKnots();
+
+                    // --- POSESTAMPED PUBLISHING START ---
+                    int64_t pose_time_ns = spline->maxTimeNs();
+                    Eigen::Vector3d t_pose = spline->itpPosition(pose_time_ns);
+                    Eigen::Quaterniond q_pose;
+                    spline->itpQuaternion(pose_time_ns, &q_pose);
+
+                    geometry_msgs::msg::PoseStamped pose_msg;
+                    pose_msg.header.stamp = rclcpp::Time(pose_time_ns);
+                    pose_msg.header.frame_id = odom_id;
+                    pose_msg.pose = CommonUtils::pose2msg(t_pose, q_pose);
+                    pub_pose->publish(pose_msg);
+                    // --- POSESTAMPED PUBLISHING END ---
                 }
                 if (max_time_ns >= t_last_map_upd + 1e8) {
                     mapIncremental();
@@ -173,9 +187,9 @@ public:
                     accum_nearest_points.clear();
                     t_last_map_upd = max_time_ns;
                 }
-            }                      
+            }
         }
-    }    
+    }
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -190,14 +204,15 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_livox_mid360_boxi;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cur_scan;
     rclcpp::Publisher<estimate_msgs::msg::Estimate>::SharedPtr pub_est;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
     rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr pub_start_time;
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
     const std::string frame_id = "base_link";
-    const std::string odom_id = "odom";    
+    const std::string odom_id = "odom";
 
     std::map<std::string, LidarConfig> lidars;
     float ds_lm_voxel;
-    pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_body;    
+    pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_body;
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last;
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last_ds;
     pcl::PointCloud<pcl::PointXYZINormal> pc_world;
@@ -207,7 +222,7 @@ private:
     std::vector<BoxPointType> cub_needrm;
     BoxPointType LocalMap_Points;
     std::vector<Eigen::aligned_vector<pcl::PointXYZINormal>> accum_nearest_points;
-    double cube_len = 2000; 
+    double cube_len = 2000;
     const float MOV_THRESHOLD = 1.5f;
     float det_range = 100.0;
     bool if_init_map = false;
@@ -217,20 +232,20 @@ private:
         std::mutex mtx_pc;
         Eigen::aligned_deque<PointData> pt_buff;
     };
-    std::map<std::string, LidarData> lidars_data;    
-    Eigen::aligned_deque<PointData> pt_meas;    
+    std::map<std::string, LidarData> lidars_data;
+    Eigen::aligned_deque<PointData> pt_meas;
 
     bool if_lidar_only;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
     Eigen::aligned_deque<ImuData> imu_buff;
     Eigen::aligned_deque<ImuData> imu_meas;
-    Eigen::aligned_vector<sensor_msgs::msg::Imu::SharedPtr> imu_int_buff;    
+    Eigen::aligned_vector<sensor_msgs::msg::Imu::SharedPtr> imu_int_buff;
     std::mutex m_buff;
     bool acc_ratio;
     Eigen::Vector3d cov_ba;
-    Eigen::Vector3d cov_bg;    
+    Eigen::Vector3d cov_bg;
     Eigen::Vector3d gravity;
-    
+
     bool if_init_filter = false;
     Estimator<24> estimator_lo;
     Estimator<30> estimator_lio;
@@ -238,14 +253,14 @@ private:
     double cov_P0 = 0.02;
     double cov_RCP_pos_old = 0.02;
     double cov_RCP_ort_old = 0.02;
-    double cov_RCP_pos_new = 0.1;    
-    double cov_RCP_ort_new = 0.1;    
-    double cov_sys_pos = 0.1;    
-    double cov_sys_ort = 0.01;    
+    double cov_RCP_pos_new = 0.1;
+    double cov_RCP_ort_new = 0.1;
+    double cov_sys_pos = 0.1;
+    double cov_sys_ort = 0.01;
     Parameters param;
     int64_t dt_ns;
     int num_points_upd;
-    
+
     const std::string baselink_frame = "base_link";
     const std::string odom_frame = "odom";
 
@@ -259,16 +274,16 @@ private:
         if (!if_lidar_only) {
             acc_ratio = CommonUtils::readParam<bool>(nh, "acc_ratio");
             std::vector<double> bias_acc_var = CommonUtils::readParam<std::vector<double>>(nh, "cov_ba");
-            cov_ba << bias_acc_var.at(0), bias_acc_var.at(1), bias_acc_var.at(2);   
+            cov_ba << bias_acc_var.at(0), bias_acc_var.at(1), bias_acc_var.at(2);
             std::vector<double> bias_gyro_var = CommonUtils::readParam<std::vector<double>>(nh, "cov_bg");
-            cov_bg << bias_gyro_var.at(0), bias_gyro_var.at(1), bias_gyro_var.at(2);    
+            cov_bg << bias_gyro_var.at(0), bias_gyro_var.at(1), bias_gyro_var.at(2);
             std::vector<double> acc_var = CommonUtils::readParam<std::vector<double>>(nh, "cov_acc");
             param.cov_acc << acc_var.at(0), acc_var.at(1), acc_var.at(2);
             std::vector<double> gyro_var = CommonUtils::readParam<std::vector<double>>(nh, "cov_gyro");
-            param.cov_gyro << gyro_var.at(0), gyro_var.at(1), gyro_var.at(2);                              
+            param.cov_gyro << gyro_var.at(0), gyro_var.at(1), gyro_var.at(2);
         }
 
-        dt_ns = 1e9 / CommonUtils::readParam<int>(nh, "knot_hz");        
+        dt_ns = 1e9 / CommonUtils::readParam<int>(nh, "knot_hz");
         double dt_s = double(dt_ns) * 1e-9;
         cov_P0 = CommonUtils::readParam<double>(nh, "cov_P0");
         cov_P0 *= (dt_s*dt_s);
@@ -279,7 +294,7 @@ private:
         double std_pos = CommonUtils::readParam<double>(nh, "std_sys_pos");
         double std_ort = CommonUtils::readParam<double>(nh, "std_sys_ort");
         cov_sys_pos = std_pos*std_pos*dt_s*dt_s;
-        cov_sys_ort = std_ort*std_ort*dt_s*dt_s;   
+        cov_sys_ort = std_ort*std_ort*dt_s*dt_s;
         param.coeff_cov = CommonUtils::readParam<double>(nh, "coeff_cov", 10);
 
         cube_len = CommonUtils::readParam<double>(nh, "cube_len");
@@ -306,36 +321,36 @@ private:
         Q_block_old.bottomRightCorner<3, 3>() = cov_RCP_ort_old*cov_sys_ort *Eigen::Matrix3d::Identity();
         Eigen::Matrix<double, 6, 6> Q_block_new = Eigen::Matrix<double, 6, 6>::Zero();
         Q_block_new.topLeftCorner<3, 3>() = cov_RCP_pos_new*cov_sys_pos *Eigen::Matrix3d::Identity();
-        Q_block_new.bottomRightCorner<3, 3>() = cov_RCP_ort_new*cov_sys_ort *Eigen::Matrix3d::Identity();        
+        Q_block_new.bottomRightCorner<3, 3>() = cov_RCP_ort_new*cov_sys_ort *Eigen::Matrix3d::Identity();
         Q.topLeftCorner<6, 6>() = Q_block_old;
         Q.block<6, 6>(6, 6) = Q_block_old;
         Q.block<6, 6>(12, 12) = Q_block_old;
-        Q.bottomRightCorner<6, 6>() = Q_block_new;  
+        Q.bottomRightCorner<6, 6>() = Q_block_new;
         if (if_lidar_only) {
-            estimator_lo.setState(dt_ns, start_t_ns, t_init, q_init, Q.topLeftCorner<24, 24>(), cov_RCPs);  
+            estimator_lo.setState(dt_ns, start_t_ns, t_init, q_init, Q.topLeftCorner<24, 24>(), cov_RCPs);
             spline = estimator_lo.getSpline();
         } else {
             Eigen::Matrix<double, 30, 30> cov_x = Eigen::Matrix<double, 30, 30>::Zero();
             cov_x.topLeftCorner<24, 24>() = cov_RCPs;
             cov_x.block<3, 3>(24, 24) = cov_ba.asDiagonal();
-            cov_x.block<3, 3>(27, 27) = cov_bg.asDiagonal();            
-            estimator_lio.setState(dt_ns, start_t_ns, t_init, q_init, Q, cov_x);   
-            spline = estimator_lio.getSpline(); 
+            cov_x.block<3, 3>(27, 27) = cov_bg.asDiagonal();
+            estimator_lio.setState(dt_ns, start_t_ns, t_init, q_init, Q, cov_x);
+            spline = estimator_lio.getSpline();
         }
-    }     
+    }
 
     void getImuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg)
     {
         m_buff.lock();
         imu_int_buff.push_back(imu_msg);
-        m_buff.unlock();        
-    }    
+        m_buff.unlock();
+    }
 
     template<typename T>
     void ousterLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ouster_msg_in)
     {
         std::string name = "Ouster";
-        const LidarConfig& lidar = lidars.at(name);        
+        const LidarConfig& lidar = lidars.at(name);
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         typename pcl::PointCloud<T>::Ptr pc_last_ouster(new typename pcl::PointCloud<T>());
         pcl::fromROSMsg(*ouster_msg_in, *pc_last_ouster);
@@ -365,15 +380,15 @@ private:
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
-        lidar_buffs.mtx_pc.unlock();        
+        lidar_buffs.mtx_pc.unlock();
         last_t_ns = time_begin + max_ofs_ns;
-    }    
+    }
 
     void livoxLidarCallback(const livox_ros_driver::msg::CustomMsg::SharedPtr livox_msg_in)
     {
         std::string name = "Mid70Avia";
-        const LidarConfig& lidar = lidars.at(name);   
-        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());     
+        const LidarConfig& lidar = lidars.at(name);
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
@@ -386,7 +401,7 @@ private:
         pt_pre.y = livox_msg_in->points[0].y;
         pt_pre.z = livox_msg_in->points[0].z;
         int N_SCAN_LINES = lidar.scan_line;
-        float blind = lidar.blind;        
+        float blind = lidar.blind;
         for (int i = 1; i < plsize; ++i) {
             if ((livox_msg_in->points[i].line < N_SCAN_LINES) && ((livox_msg_in->points[i].tag & 0x30) == 0x10 || (livox_msg_in->points[i].tag & 0x30) == 0x00)) {
                 valid_point_num++;
@@ -406,7 +421,7 @@ private:
                     pt_pre = pt;
                 }
 
-            } 
+            }
         }
         LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
@@ -414,13 +429,13 @@ private:
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();
         last_t_ns = time_begin + max_ofs_ns;
-    }    
+    }
 
     void livoxLidar2Callback(const livox_ros_driver2::msg::CustomMsg::SharedPtr livox_msg_in)
     {
         std::string name = "HAP360";
-        const LidarConfig& lidar = lidars.at(name);     
-        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());        
+        const LidarConfig& lidar = lidars.at(name);
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
@@ -433,7 +448,7 @@ private:
         pt_pre.y = livox_msg_in->points[0].y;
         pt_pre.z = livox_msg_in->points[0].z;
         int N_SCAN_LINES = lidar.scan_line;
-        float blind = lidar.blind;          
+        float blind = lidar.blind;
         for (int i = 1; i < plsize; ++i) {
             if ((livox_msg_in->points[i].line < N_SCAN_LINES) && ((livox_msg_in->points[i].tag & 0x30) == 0x10 || (livox_msg_in->points[i].tag & 0x30) == 0x00)) {
                 valid_point_num++;
@@ -442,7 +457,7 @@ private:
                     pt.x = livox_msg_in->points[i].x;
                     pt.y = livox_msg_in->points[i].y;
                     pt.z = livox_msg_in->points[i].z;
-                    pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); 
+                    pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6);
                     pt.curvature = livox_msg_in->points[i].reflectivity;
                     if (pt.intensity >= 0 && ((abs(pt.x - pt_pre.x) > 1e-7) || (abs(pt.y - pt_pre.y) > 1e-7) || (abs(pt.z - pt_pre.z) > 1e-7))
                                             && pt.x*pt.x+pt.y*pt.y+pt.z*pt.z > (blind * blind) && livox_msg_in->points[i].offset_time + time_begin > last_t_ns) {
@@ -452,21 +467,21 @@ private:
                     }
                     pt_pre = pt;
                 }
-            } 
+            }
         }
         LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
-        lidar_buffs.mtx_pc.unlock();        
+        lidar_buffs.mtx_pc.unlock();
         last_t_ns = time_begin + max_ofs_ns;
     }
 
      void livoxAVIACallback(const livox_interfaces::msg::CustomMsg::SharedPtr livox_msg_in)
      {
         std::string name = "AviaResple";
-        const LidarConfig& lidar = lidars.at(name);       
-        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());      
+        const LidarConfig& lidar = lidars.at(name);
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
@@ -479,7 +494,7 @@ private:
         pt_pre.y = livox_msg_in->points[0].y;
         pt_pre.z = livox_msg_in->points[0].z;
         int N_SCAN_LINES = lidar.scan_line;
-        float blind = lidar.blind;           
+        float blind = lidar.blind;
         for (int i = 1; i < plsize; ++i) {
             if ((livox_msg_in->points[i].line < N_SCAN_LINES) && ((livox_msg_in->points[i].tag & 0x30) == 0x10 || (livox_msg_in->points[i].tag & 0x30) == 0x00) && livox_msg_in->points[i].offset_time + time_begin > last_t_ns) {
                 valid_point_num++;
@@ -488,7 +503,7 @@ private:
                     pt.x = livox_msg_in->points[i].x;
                     pt.y = livox_msg_in->points[i].y;
                     pt.z = livox_msg_in->points[i].z;
-                    pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); 
+                    pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6);
                     pt.curvature = livox_msg_in->points[i].reflectivity;
                     if (pt.intensity >= 0 && ((abs(pt.x - pt_pre.x) > 1e-7) || (abs(pt.y - pt_pre.y) > 1e-7) ||
                                             (abs(pt.z - pt_pre.z) > 1e-7))
@@ -507,13 +522,13 @@ private:
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();
         last_t_ns = time_begin + max_ofs_ns;
-     }        
+     }
 
     void hesaiLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr hesai_msg_in)
 	{
         std::string name = "Hesai";
-        const LidarConfig& lidar = lidars.at(name);    
-        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());    
+        const LidarConfig& lidar = lidars.at(name);
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         pcl::PointCloud<hesai_ros::Point>::Ptr pc_last_hesai(new pcl::PointCloud<hesai_ros::Point>());
         pcl::fromROSMsg(*hesai_msg_in, *pc_last_hesai);
         size_t plsize = pc_last_hesai->size();
@@ -522,7 +537,7 @@ private:
         rclcpp::Time timestamp_begin = rclcpp::Time(hesai_msg_in->header.stamp);
         int64_t time_begin = timestamp_begin.nanoseconds();
         static int64_t last_t_ns = time_begin;
-        int64_t max_ofs_ns = 0;        
+        int64_t max_ofs_ns = 0;
         pcl::PointXYZINormal pt;
         float blind = lidar.blind;
         for (unsigned int i = 0; i < plsize; ++i) {
@@ -534,7 +549,7 @@ private:
                 double timestamp_ns = std::modf(pc_last_hesai->points[i].timestamp, &timestamp_s);
                 rclcpp::Time timestamp_ros(static_cast<int32_t>(timestamp_s), static_cast<int32_t>(timestamp_ns * 1.0e9),
                     rcl_clock_type_t::RCL_ROS_TIME);
-                pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3; 
+                pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3;
                 pt.curvature = pc_last_hesai->points[i].intensity;
                 if (pt.intensity >= 0 && pt.x*pt.x+pt.y*pt.y+pt.z*pt.z > (blind * blind) && CommonUtils::ms2ns(pt.intensity) + time_begin > last_t_ns) {
                     int64_t ofs = CommonUtils::ms2ns(pt.intensity);
@@ -547,15 +562,15 @@ private:
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
-        lidar_buffs.mtx_pc.unlock();        
+        lidar_buffs.mtx_pc.unlock();
         last_t_ns = time_begin + max_ofs_ns;
-	}     
+	}
 
     void livoxMid360BoxiCallback(const sensor_msgs::msg::PointCloud2::SharedPtr livox_msg_in)
 	{
         std::string name = "Mid360Boxi";
-        const LidarConfig& lidar = lidars.at(name);   
-        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());     
+        const LidarConfig& lidar = lidars.at(name);
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         pcl::PointCloud<livox_mid360_boxi::Point>::Ptr pc_last_livox(new pcl::PointCloud<livox_mid360_boxi::Point>());
         pcl::fromROSMsg(*livox_msg_in, *pc_last_livox);
         size_t plsize = pc_last_livox->size();
@@ -563,8 +578,8 @@ private:
         pc_last->reserve(plsize);
         rclcpp::Time timestamp_begin = rclcpp::Time(livox_msg_in->header.stamp);
         int64_t time_begin = timestamp_begin.nanoseconds();
-        static int64_t last_t_ns = time_begin;   
-        int64_t max_ofs_ns = 0;         
+        static int64_t last_t_ns = time_begin;
+        int64_t max_ofs_ns = 0;
         pcl::PointXYZINormal pt;
         float blind = lidar.blind;
         for (unsigned int i = 0; i < plsize; ++i) {
@@ -587,11 +602,11 @@ private:
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
-        lidar_buffs.mtx_pc.unlock();     
-        last_t_ns = time_begin + max_ofs_ns;   
-	}      
+        lidar_buffs.mtx_pc.unlock();
+        last_t_ns = time_begin + max_ofs_ns;
+	}
 
-    void publishFrameWorld() 
+    void publishFrameWorld()
     {
         int size = pc_world.points.size();
         pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudWorld(new pcl::PointCloud<pcl::PointXYZI>(size, 1));
@@ -599,20 +614,20 @@ private:
             laserCloudWorld->points[i].x = pc_world.points[i].x;
             laserCloudWorld->points[i].y = pc_world.points[i].y;
             laserCloudWorld->points[i].z = pc_world.points[i].z;
-            laserCloudWorld->points[i].intensity = pc_world.points[i].curvature; 
+            laserCloudWorld->points[i].intensity = pc_world.points[i].curvature;
         }
         sensor_msgs::msg::PointCloud2 laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = rclcpp::Time(spline->maxTimeNs());
         laserCloudmsg.header.frame_id = odom_id;
         pub_cur_scan->publish(laserCloudmsg);
-    }   
+    }
 
     bool initialization()
     {
         if (if_init_filter && if_init_map) {
             return true;
-        } 
+        }
         for (const auto& [lidar_name, lidar_data] : lidars_data) {
             if (lidar_data.pt_buff.empty()) {
                 return false;
@@ -621,9 +636,9 @@ private:
         int64_t start_t_ns = std::numeric_limits<int64_t>::max();
         for (const auto& [lidar_name, lidar_data] : lidars_data) {
             start_t_ns = std::min(start_t_ns, std::max(lidar_data.pt_buff.front().time_ns, int64_t(0)));
-        }        
+        }
         if (!if_init_filter) {
-            Eigen::Quaterniond q_WI = Eigen::Quaterniond::Identity();   
+            Eigen::Quaterniond q_WI = Eigen::Quaterniond::Identity();
             if (!if_lidar_only) {
                 Eigen::Vector3d gravity_sum(0, 0, 0);
                 m_buff.lock();
@@ -634,7 +649,7 @@ private:
                 }
                 while (!imu_buff.empty() && imu_buff.front().time_ns < start_t_ns) {
                     imu_buff.pop_front();
-                }                    
+                }
                 m_buff.unlock();
                 gravity_sum /= n_imu;
                 Eigen::Vector3d gravity_ave = gravity_sum.normalized() * 9.81;
@@ -644,19 +659,19 @@ private:
                 Eigen::Quaterniond q0(R0);
                 q_WI = Quater::positify(q0);
                 gravity = q_WI * gravity_ave;
-            } 
+            }
             initFilter(start_t_ns, Eigen::Vector3d(0, 0, 0), q_WI);
-            if_init_filter = true;            
+            if_init_filter = true;
             std_msgs::msg::Int64 start_time;
             start_time.data = start_t_ns;
-            pub_start_time->publish(start_time);    
+            pub_start_time->publish(start_time);
         }
         if (!if_init_map) {
             if(ikdtree.Root_Node == nullptr) {
                 ikdtree.set_downsample_param(ds_lm_voxel);
             }
             if (if_lidar_only) {
-                estimator_lo.propRCP(start_t_ns);  
+                estimator_lo.propRCP(start_t_ns);
             } else {
                 estimator_lio.propRCP(start_t_ns);
             }
@@ -669,12 +684,12 @@ private:
                         break;
                     }
                 }
-            }            
+            }
             if(feats_down_size < 100) {
                 return false;
-            }            
+            }
             pc_world.clear();
-            pc_world.resize(feats_down_size); 
+            pc_world.resize(feats_down_size);
             int world_i = 0;
             for (const auto& [lidar_name, lidar_data] : lidars_data) {
                 for (size_t i = 0; i < lidar_data.pt_buff.size(); i++) {
@@ -691,19 +706,19 @@ private:
                 while (!lidar_data.pt_buff.empty() && lidar_data.pt_buff.front().time_ns < start_t_ns + 1e8) {
                     lidar_data.pt_buff.pop_front();
                 }
-            }            
-            ikdtree.Build(pc_world.points); 
+            }
+            ikdtree.Build(pc_world.points);
             pc_world.clear();
             if_init_map = true;
-        }       
-        return false; 
+        }
+        return false;
     }
 
     bool collectMeasurements()
     {
         rclcpp::Rate rate(20);
         int64_t pt_min_time = std::numeric_limits<int64_t>::max();
-        int64_t pt_max_time = std::numeric_limits<int64_t>::max();            
+        int64_t pt_max_time = std::numeric_limits<int64_t>::max();
         for (const auto& [lidar_name, lidar_data] : lidars_data) {
             if (lidar_data.pt_buff.empty()) {
                 rate.sleep();
@@ -711,24 +726,24 @@ private:
             }
             pt_min_time = std::min(pt_min_time, lidar_data.pt_buff.front().time_ns);
             pt_max_time = std::min(pt_max_time, lidar_data.pt_buff.back().time_ns);
-        }            
+        }
         if (pt_max_time <= spline->maxTimeNs() + dt_ns) {
             rate.sleep();
             return false;
-        }      
+        }
         if (!if_lidar_only && (imu_buff.empty() || imu_buff.back().time_ns <= spline->maxTimeNs())) {
             rate.sleep();
             return false;
-        }                   
+        }
         int64_t max_time_ns = std::min(spline->maxTimeNs(), pt_min_time + dt_ns);
         if (pt_min_time > max_time_ns) {
             if (if_lidar_only) {
                 estimator_lo.propRCP(pt_min_time);
             } else {
                 estimator_lio.propRCP(pt_min_time);
-            }                
+            }
             max_time_ns = spline->maxTimeNs();
-        }     
+        }
         if (spline->numKnots() > 4) {
             max_time_ns = spline->maxTimeNs();
         }
@@ -742,18 +757,18 @@ private:
                 lidar_data.pt_buff.pop_front();
                 cnt++;
             }
-        }                    
+        }
         if (!if_lidar_only) {
             while (!imu_buff.empty() && imu_buff.front().time_ns < spline->minTimeNs()) {
                 imu_buff.pop_front();
-            }                
+            }
             while (!imu_buff.empty() && imu_buff.front().time_ns <= max_time_ns) {
                 imu_meas.emplace_back(imu_buff.front());
                 imu_buff.pop_front();
-            } 
-        } 
+            }
+        }
         return true;
- 
+
     }
 
     Eigen::Vector3d getPositionLiDAR(int64_t t_ns, const Eigen::Vector3d& t_bl)
@@ -768,7 +783,7 @@ private:
         spline->itpQuaternion(t_ns, &orient_interp);
         Eigen::Vector3d t = orient_interp * t_bl + t_interp;
         return t;
-    }       
+    }
 
     void lasermapFovSegment()
     {
@@ -782,11 +797,11 @@ private:
             Eigen::Vector3d pos_lidar = getPositionLiDAR(spline->maxTimeNs(), lidar.t_bl);
             pos_lidar_min = pos_lidar_min.array().min(pos_lidar.array()).matrix();
             pos_lidar_max = pos_lidar_max.array().max(pos_lidar.array()).matrix();
-        }        
+        }
         if (!Localmap_Initialized){
             for (int i = 0; i < 3; i++){
                 LocalMap_Points.vertex_min[i] = pos_lidar_min(i) - cube_len / 2.0;
-                LocalMap_Points.vertex_max[i] = pos_lidar_max(i) + cube_len / 2.0;                
+                LocalMap_Points.vertex_max[i] = pos_lidar_max(i) + cube_len / 2.0;
             }
             Localmap_Initialized = true;
             return;
@@ -795,7 +810,7 @@ private:
         bool need_move = false;
         for (int i = 0; i < 3; i++){
             dist_to_map_edge[i][0] = fabs(pos_lidar_min(i) - LocalMap_Points.vertex_min[i]);
-            dist_to_map_edge[i][1] = fabs(pos_lidar_max(i) - LocalMap_Points.vertex_max[i]);            
+            dist_to_map_edge[i][1] = fabs(pos_lidar_max(i) - LocalMap_Points.vertex_max[i]);
             if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * det_range || dist_to_map_edge[i][1] <= MOV_THRESHOLD * det_range) need_move = true;
         }
         if (!need_move) return;
@@ -821,7 +836,7 @@ private:
         if(cub_needrm.size() > 0) {
             ikdtree.Delete_Point_Boxes(cub_needrm);
         }
-    }    
+    }
 
     void mapIncremental()
     {
@@ -830,13 +845,13 @@ private:
         int feats_down_size = pc_world.points.size();
         PointToAdd.reserve(feats_down_size);
         PointNoNeedDownsample.reserve(feats_down_size);
-        for(int i = 0; i < feats_down_size; i++) {     
-            const pcl::PointXYZINormal& point = pc_world.points[i];       
+        for(int i = 0; i < feats_down_size; i++) {
+            const pcl::PointXYZINormal& point = pc_world.points[i];
             if (!accum_nearest_points[i].empty()) {
                 const Eigen::aligned_vector<pcl::PointXYZINormal> &points_near = accum_nearest_points[i];
                 bool need_add = true;
-                pcl::PointXYZINormal downsample_result, mid_point; 
-                
+                pcl::PointXYZINormal downsample_result, mid_point;
+
                 mid_point.x = floor(point.x/ds_lm_voxel)*ds_lm_voxel + 0.5 * ds_lm_voxel;
                 mid_point.y = floor(point.y/ds_lm_voxel)*ds_lm_voxel + 0.5 * ds_lm_voxel;
                 mid_point.z = floor(point.z/ds_lm_voxel)*ds_lm_voxel + 0.5 * ds_lm_voxel;

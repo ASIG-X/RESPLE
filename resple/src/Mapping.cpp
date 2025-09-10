@@ -28,7 +28,7 @@ class MappingBase
 {
   public:
 
-    std::mutex mtx;    
+    std::mutex mtx;
     LidarConfig lidar;
     MappingBase(rclcpp::Node::SharedPtr &nh, const LidarConfig& lidar_config) : lidar(lidar_config)
     {
@@ -36,7 +36,7 @@ class MappingBase
         ds_filter_each_scan.setLeafSize(0.2, 0.2, 0.2);
         pc_last.reset(new typename pcl::PointCloud<PointType>());
         pc_last_ds.reset(new typename pcl::PointCloud<PointType>());
-        pc.reset(new typename pcl::PointCloud<PointType>());   
+        pc.reset(new typename pcl::PointCloud<PointType>());
     }
 
     void processScan(SplineState* spl, const int64_t spl_window_st_ns)
@@ -48,14 +48,14 @@ class MappingBase
             mtx.lock();
             if (t_end_ns < spl->minTimeNs()) {
                 pc_L_buff.pop_front();
-                mtx.unlock(); 
+                mtx.unlock();
             } else if (t_end_ns <= spl->maxTimeNs()) {
                 transformCloud(pc_L_buff.front(), spl, pc);
                 pc_L_buff.pop_front();
-                mtx.unlock();                
+                mtx.unlock();
                 publishMap(pc, pub_global_map);
             } else {
-                mtx.unlock(); 
+                mtx.unlock();
                 rate.sleep();
                 break;
             }
@@ -75,7 +75,7 @@ class MappingBase
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_global_map;
 
     PointType transformPoint(int64_t time_ns, const SplineState* spl, const PointType& pt_in) const
-    {     
+    {
         Eigen::Quaterniond q_itp;
         Eigen::Vector3d t_itp;
         spl->itpQuaternion(time_ns, &q_itp);
@@ -90,7 +90,7 @@ class MappingBase
         point_world.intensity = pt_in.intensity;
         point_world.curvature = pt_in.curvature;
         return point_world;
-    }    
+    }
 
     void transformCloud(const typename pcl::PointCloud<PointType>& pc_in, SplineState* spl,
                        typename pcl::PointCloud<PointType>::Ptr pc_out) const
@@ -105,13 +105,13 @@ class MappingBase
                 pc_out->points[i] = transformPoint(t_ns, spl, pt);
             }
         }
-    }    
+    }
 
   protected:
     Eigen::aligned_deque<typename pcl::PointCloud<PointType>> pc_L_buff;
     typename pcl::PointCloud<PointType>::Ptr pc_last;
     typename pcl::PointCloud<PointType>::Ptr pc_last_ds;
-    pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_each_scan;    
+    pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_each_scan;
     const std::string frame_id = "base_link";
     const std::string odom_id = "odom";
     typename pcl::PointCloud<PointType>::Ptr pc;
@@ -125,9 +125,9 @@ class OusterBuff : public MappingBase<pcl::PointXYZINormal>
   OusterBuff(rclcpp::Node::SharedPtr &nh, const LidarConfig& lidar_config) : MappingBase<pcl::PointXYZINormal>(nh, lidar_config)
     {
         pc_subscription_ouster = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
-            this->lidar.topic, 100, std::bind(&OusterBuff::ousterLidarCallback, this, std::placeholders::_1));         
+            this->lidar.topic, 100, std::bind(&OusterBuff::ousterLidarCallback, this, std::placeholders::_1));
         double lidar_time_offset = CommonUtils::readParam<double>(nh, "lidar_time_offset", 0.0);
-        time_offset = 1e9*lidar_time_offset;        
+        time_offset = 1e9*lidar_time_offset;
     }
 
     void ousterLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ouster_msg_in)
@@ -191,7 +191,7 @@ class Mid70AviaBuff : public MappingBase<pcl::PointXYZINormal>
                 pt.x = livox_msg_in->points[i].x;
                 pt.y = livox_msg_in->points[i].y;
                 pt.z = livox_msg_in->points[i].z;
-                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms         
+                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms
                 pt.curvature = livox_msg_in->points[i].reflectivity;
                 pc_last->points.push_back(pt);
             }
@@ -236,7 +236,7 @@ public:
                 pt.x = livox_msg_in->points[i].x;
                 pt.y = livox_msg_in->points[i].y;
                 pt.z = livox_msg_in->points[i].z;
-                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms         
+                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms
                 pt.curvature = livox_msg_in->points[i].reflectivity;
                 pc_last->points.push_back(pt);
             }
@@ -281,7 +281,7 @@ public:
                 pt.x = livox_msg_in->points[i].x;
                 pt.y = livox_msg_in->points[i].y;
                 pt.z = livox_msg_in->points[i].z;
-                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms         
+                pt.intensity = float (livox_msg_in->points[i].offset_time) / float (1e6); // unit: ms
                 pt.curvature = livox_msg_in->points[i].reflectivity;
                 pc_last->points.push_back(pt);
             }
@@ -332,7 +332,7 @@ class HesaiBuff : public MappingBase<pcl::PointXYZINormal>
             double timestamp_ns = std::modf(pc_last_hesai->points[i].timestamp, &timestamp_s);
             rclcpp::Time timestamp_ros(static_cast<int32_t>(timestamp_s), static_cast<int32_t>(timestamp_ns * 1.0e9),
                 rcl_clock_type_t::RCL_ROS_TIME);
-            pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3; 
+            pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3;
             pt.curvature = pc_last_hesai->points[i].intensity;
 
             if (pt.intensity >= 0) {
@@ -383,7 +383,7 @@ class Mid360BoxiBuff : public MappingBase<pcl::PointXYZINormal>
             pt.z = pc_last_livox->points[i].z;
             rclcpp::Time timestamp_ros(static_cast<int64_t>(pc_last_livox->points[i].timestamp),
                 rcl_clock_type_t::RCL_ROS_TIME);
-            pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3; 
+            pt.intensity = (timestamp_ros - timestamp_begin).seconds() * 1.0e3;
             pt.curvature = pc_last_livox->points[i].intensity;
 
             if (pt.intensity >= 0) {
@@ -437,7 +437,7 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
         for (auto vis_map : vis_maps) {
             vis_map->mtx.unlock();
         }
-    }    
+    }
 
     void process() {
         rclcpp::Rate rate(20);
@@ -456,8 +456,8 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
                 continue;
             }
             for (const auto vis_map : vis_maps) {
-                vis_map->processScan(&spline_global, spl_window_st_ns);  
-            }                     
+                vis_map->processScan(&spline_global, spl_window_st_ns);
+            }
         }
     }
 
@@ -476,7 +476,7 @@ private:
     const std::string odom_id = "odom";
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
     bool if_init_succeed = false;
-    std::mutex m_spline;    
+    std::mutex m_spline;
 
     void displayControlPoints()
     {
@@ -496,7 +496,7 @@ private:
         }
         estimate_msgs::msg::Spline spline_msg = est_msg->spline;
         SplineState spline_w;
-        
+
         spline_w.init(spline_msg.dt, 0, spline_msg.start_t, spline_msg.start_idx);
         for(const auto& knot : spline_msg.knots) {
             Eigen::Vector3d pos(knot.position.x, knot.position.y, knot.position.z);
@@ -511,7 +511,7 @@ private:
             spline_w.setIdles(i, t_idle, quat_idle, q_idle0);
         }
         lock_mappings();
-        spl_window_st_ns = spline_msg.start_t - spline_msg.dt; 
+        spl_window_st_ns = spline_msg.start_t - spline_msg.dt;
         spline_global.setTimeIntervalNs(spline_msg.dt);
         spline_global.updateKnots(&spline_w);
         unlock_mappings();
@@ -528,7 +528,7 @@ private:
         odom_msg.header.frame_id = odom_id;
         odom_msg.child_frame_id = frame_id;
         odom_msg.pose.pose = odom_pose.pose;
-        pub_odom->publish(odom_msg);      
+        pub_odom->publish(odom_msg);
         geometry_msgs::msg::TransformStamped transformStamped;
         transformStamped.header.stamp = odom_msg.header.stamp;
         transformStamped.header.frame_id = odom_id;
@@ -583,7 +583,7 @@ private:
             t_ns += 1e8;
         }
         pub_path->publish(opt_old_path);
-    }         
+    }
 
 };
 
@@ -607,7 +607,7 @@ int main(int argc, char** argv) {
         } else if (!lidar.type.compare("Mid70Avia")) {
             buffs.push_back(new Mid70AviaBuff(nh, lidar));
         } else if (!lidar.type.compare("HAP360")) {
-            buffs.push_back(new HAP360Buff(nh, lidar));    
+            buffs.push_back(new HAP360Buff(nh, lidar));
         } else if (!lidar.type.compare("AviaResple")) {
             buffs.push_back(new AviaRespleBuff(nh, lidar));
         } else if (!lidar.type.compare("Hesai")) {

@@ -25,7 +25,7 @@ struct ImuData {
 
     ImuData(const ImuData& other) : time_ns(other.time_ns), gyro(other.gyro), accel(other.accel),
     H(other.H), imu_itp(other.imu_itp) {
-    }          
+    }
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
@@ -45,7 +45,7 @@ namespace ouster_ros {
         uint32_t t;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
-}  
+}
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
     (float, x, x)
@@ -92,7 +92,7 @@ namespace livox_mid360_boxi {
       (uint8_t, line, line)
       (double, timestamp, timestamp)
   )
-  
+
 class CommonUtils
 {
 public:
@@ -102,7 +102,7 @@ public:
         T ans;
         if (!n->has_parameter(name)) {
             n->declare_parameter<T>(name);
-        }        
+        }
         if (!n->get_parameter(name, ans)) {
             RCLCPP_FATAL_STREAM(n->get_logger(), "Failed to load " << name);
             exit(1);
@@ -120,12 +120,12 @@ public:
         n->get_parameter_or(name, ans, alternative);
         return ans;
     }
-    
+
     static Eigen::Vector3d readVector3d(rclcpp::Node::SharedPtr &n, const std::string& name)
     {
         std::vector<double> v = CommonUtils::readParam<std::vector<double>>(n, name);
         return Eigen::Vector3d(v[0], v[1], v[2]);
-    }          
+    }
 
     static Eigen::Vector3d R2ypr(const Eigen::Matrix3d &R)
     {
@@ -142,7 +142,7 @@ public:
         ypr(2) = r;
 
         return ypr / M_PI * 180.0;
-    }      
+    }
 
     template <typename Derived>
     static Eigen::Matrix<typename Derived::Scalar, 3, 3> ypr2R(const Eigen::MatrixBase<Derived> &ypr)
@@ -180,11 +180,11 @@ public:
         double yaw = CommonUtils::R2ypr(R0).x();
         R0 = CommonUtils::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
         return R0;
-    }    
+    }
 
     static int64_t ms2ns(const float t_ms) {
         return (t_ms * float(1e6));
-    }    
+    }
 
     static bool time_list(pcl::PointXYZINormal &x, pcl::PointXYZINormal &y) {return (x.intensity < y.intensity);};
 
@@ -201,7 +201,21 @@ public:
         msg.pose.orientation.y = orient.y();
         msg.pose.orientation.z = orient.z();
         return msg;
-    }    
+    }
+
+    static geometry_msgs::msg::Pose pose2msg(const Eigen::Vector3d& pos,
+                                             const Eigen::Quaterniond& orient)
+    {
+        geometry_msgs::msg::Pose msg;
+        msg.position.x = pos.x();
+        msg.position.y = pos.y();
+        msg.position.z = pos.z();
+        msg.orientation.w = orient.w();
+        msg.orientation.x = orient.x();
+        msg.orientation.y = orient.y();
+        msg.orientation.z = orient.z();
+        return msg;
+    }
 
     static geometry_msgs::msg::Point32 getPointMsg(const Eigen::Vector3d& p)
     {
@@ -210,7 +224,7 @@ public:
         p_msg.y = p.y();
         p_msg.z = p.z();
         return p_msg;
-    }    
+    }
 
     template<typename T>
     static bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const Eigen::aligned_vector<pcl::PointXYZINormal> &point, const T &threshold)
@@ -240,7 +254,7 @@ public:
             }
         }
         return true;
-    }            
+    }
 };
 
 struct LidarConfig {
@@ -295,12 +309,12 @@ struct PointData {
     double zp = 0;
     Eigen::Matrix<double, 1, 24> H = Eigen::Matrix<double, 1, 24>::Zero();
     Eigen::Quaterniond q_bl;
-    Eigen::Vector3d t_bl;    
+    Eigen::Vector3d t_bl;
     double var_pt;
 
     PointData() {};
     PointData(const pcl::PointXYZINormal& pt_in, int64_t fr_start_time, const Eigen::Quaterniond& q_bl_in,
-        const Eigen::Vector3d& t_bl_in, double w_pt) : pt(pt_in), pt_b(Eigen::Vector3d(pt_in.x, pt_in.y, pt_in.z)), 
+        const Eigen::Vector3d& t_bl_in, double w_pt) : pt(pt_in), pt_b(Eigen::Vector3d(pt_in.x, pt_in.y, pt_in.z)),
         q_bl(q_bl_in), t_bl(t_bl_in) {
         time_ns = fr_start_time + CommonUtils::ms2ns(pt_in.intensity);
         if_valid = false;
@@ -308,15 +322,15 @@ struct PointData {
         var_pt = w_pt;
     }
 
-    PointData(const PointData& other) : time_ns(other.time_ns), pt(other.pt), 
-        pt_b(other.pt_b), pt_w(other.pt_w), 
-        if_valid(other.if_valid), dist(other.dist), 
-        nearest_points(other.nearest_points), 
+    PointData(const PointData& other) : time_ns(other.time_ns), pt(other.pt),
+        pt_b(other.pt_b), pt_w(other.pt_w),
+        if_valid(other.if_valid), dist(other.dist),
+        nearest_points(other.nearest_points),
         zp(other.zp), H(other.H), q_bl(other.q_bl), t_bl(other.t_bl), var_pt(other.var_pt) {
-    }        
+    }
 
     PointData& operator=(const PointData& other) {
-        if (this != &other) { 
+        if (this != &other) {
             this->time_ns = other.time_ns;
             this->pt = other.pt;
             this->pt_b = other.pt_b;
@@ -327,12 +341,10 @@ struct PointData {
             this->zp = other.zp;
             this->H = other.H;
             this->q_bl = other.q_bl;
-            this->t_bl = other.t_bl;   
-            this->var_pt = other.var_pt;         
+            this->t_bl = other.t_bl;
+            this->var_pt = other.var_pt;
         }
         return *this;
-    }    
+    }
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
-
-
