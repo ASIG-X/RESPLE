@@ -7,7 +7,7 @@ def generate_launch_description():
     config_yaml_fusion = os.path.join(
         get_package_share_directory('resple'),
         'config',
-        'config_dog.yaml')
+        'config_tudorun01.yaml')
     config_rviz = os.path.join(
         get_package_share_directory('resple'),
         'config',
