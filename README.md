@@ -14,7 +14,7 @@ These four variants have been tested in real-world datasets and our own experime
 @ARTICLE{cao2025resple,
   author={Cao, Ziyu and Talbot, William and Li, Kailai},
   title={RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry}, 
-  journal={arXiv preprint arXiv:2504.11580},
+  journal={IEEE Robotics and Automation Letters},
   year={2025}
 }
 ``` 
@@ -60,13 +60,17 @@ Password: RESPLE2025
 **HelmDyn (Helm Dynamic) dataset**
 * 1 Livox Mid360 mounted on a helmet as a mobile platform
 * 10 sequences recorded with very dynamic motions combining walking, running, jumping, and in-hand waving within a cubic space   
-* Ground truth trajectory recorded using a high-precision (submillimeter), low-latency motion capture system (Qualisys) invovling 20 cameras
+* Ground truth trajectory recorded using a high-precision (submillimeter), low-latency motion capture system (Qualisys) involving 20 cameras
 
 **R-Campus dataset**
 * 1 Livox Avia mounted on a bipedal wheeled robot (Direct Drive DIABLO)
 * 1 sequence in walking speed recorded in a large-scale campus environment
 * Trajectory starts and ends at the same location point. 
 
+**TudoRun (Tudor Run) dataset**
+* 1 Livox Mid360 mounted on a Unitree Go2 quadruped robot
+* 8 indoor sequences with dynamic motions: 3 fully captured in a test field with an 8-camera motion capture system, and 5 starting and ending in the test field but extending into a larger hall without motion capture
+* Ground truth trajectory recorded only within this test field using the motion capture system (Qualisys) with passive markers
 
 ## Usage
 For LIO use, change `if_lidar_only` in `resple/config/config_xxx.yaml` to `false`. 
