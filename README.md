@@ -121,7 +121,7 @@ source install/setup.bash
 ros2 bag play /path/to/bag/
 ```
   
-* GrandTour (Hesai XT32, Livox Mid360)
+* [GrandTour](https://grand-tour.leggedrobotics.com/) dataset (Hesai XT32, Livox Mid360)
 ```
 source install/setup.bash
 ros2 launch resple resple_heap_testsite_hoenggerberg.launch.py
