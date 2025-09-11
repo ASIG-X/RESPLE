@@ -15,6 +15,9 @@ These four variants have been tested in real-world datasets and our own experime
   author={Cao, Ziyu and Talbot, William and Li, Kailai},
   title={RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry}, 
   journal={IEEE Robotics and Automation Letters},
+  volume={10},
+  number={10},
+  pages={10666-10673},
   year={2025}
 }
 ``` 
