@@ -33,7 +33,7 @@ sudo apt install ros-humble-pcl*
 ### Compilation
 ```
 cd ~/ros2_ws/src
-git clone --recursive git@github.com:ASIG-X/RESPLE.git
+git clone --recursive https://github.com/ASIG-X/RESPLE.git
 cd ..
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-select estimate_msgs livox_ros_driver livox_interfaces livox_ros_driver2 resple
 ```
@@ -44,7 +44,7 @@ To build a docker image capable of running the examples and dataset:
 
 ```bash
 cd ~/path/to/src
-git clone --recursive git@github.com:ASIG-X/RESPLE.git
+git clone --recursive https://github.com/ASIG-X/RESPLE.git
 cd RESPLE
 docker build --ssh default --tag resple .
 ```
