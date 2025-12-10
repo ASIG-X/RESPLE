@@ -112,8 +112,8 @@ class MappingBase
     typename pcl::PointCloud<PointType>::Ptr pc_last;
     typename pcl::PointCloud<PointType>::Ptr pc_last_ds;
     pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_each_scan;    
-    const std::string frame_id = "base_link";
-    const std::string odom_id = "odom";
+    const std::string frame_id = "body";
+    const std::string odom_id = "world";
     typename pcl::PointCloud<PointType>::Ptr pc;
 
 };
@@ -472,8 +472,8 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud>::SharedPtr pub_knots;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_path;
     std::vector<MappingBase<pcl::PointXYZINormal>*> vis_maps;
-    const std::string frame_id = "base_link";
-    const std::string odom_id = "odom";
+    const std::string frame_id = "body";
+    const std::string odom_id = "world";
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
     bool if_init_succeed = false;
     std::mutex m_spline;    
@@ -539,28 +539,37 @@ private:
         transformStamped.transform.rotation = odom_pose.pose.orientation;
         br->sendTransform(transformStamped);
         transformStamped.header.stamp = odom_msg.header.stamp;
-        transformStamped.header.frame_id = frame_id;
-        transformStamped.child_frame_id = "imu";
-        transformStamped.transform.translation.x = 0;
-        transformStamped.transform.translation.y = 0;
-        transformStamped.transform.translation.z = 0;
-        transformStamped.transform.rotation.w = 1;
-        transformStamped.transform.rotation.x = 0;
-        transformStamped.transform.rotation.y = 0;
-        transformStamped.transform.rotation.z = 0;
+        transformStamped.header.frame_id = odom_id;
+        transformStamped.child_frame_id = "imu_frame";
+        transformStamped.transform.translation.x = odom_pose.pose.position.x;
+        transformStamped.transform.translation.y = odom_pose.pose.position.y;
+        transformStamped.transform.translation.z = odom_pose.pose.position.z;
+        transformStamped.transform.rotation.w = odom_pose.pose.orientation.w;
+        transformStamped.transform.rotation.x = odom_pose.pose.orientation.x;
+        transformStamped.transform.rotation.y = odom_pose.pose.orientation.y;
+        transformStamped.transform.rotation.z = odom_pose.pose.orientation.z;
         br->sendTransform(transformStamped);
 
-        transformStamped.header.stamp = odom_msg.header.stamp;
-        transformStamped.header.frame_id = frame_id;
-        transformStamped.child_frame_id = "lidar";
-        transformStamped.transform.translation.x = 0;
-        transformStamped.transform.translation.y = 0;
-        transformStamped.transform.translation.z = 0;
-        transformStamped.transform.rotation.w = 1;
-        transformStamped.transform.rotation.x = 0;
-        transformStamped.transform.rotation.y = 0;
-        transformStamped.transform.rotation.z = 0;
-        br->sendTransform(transformStamped);
+        int id_lidar = 0;
+        for (const auto vis_map : vis_maps) {
+            Eigen::Quaterniond q_wi(odom_pose.pose.orientation.w, odom_pose.pose.orientation.x, odom_pose.pose.orientation.y, odom_pose.pose.orientation.z);
+            Eigen::Vector3d t_wi(odom_pose.pose.position.x, odom_pose.pose.position.y, odom_pose.pose.position.z);
+            Eigen::Quaterniond q_wl = q_wi * vis_map->lidar.q_bl;
+            Eigen::Vector3d t_wl = q_wi * vis_map->lidar.t_bl + t_wi;
+            std::string lidar_str = "lidar" + std::to_string(id_lidar) + "_frame";
+            transformStamped.header.stamp = odom_msg.header.stamp;
+            transformStamped.header.frame_id = odom_id;
+            transformStamped.child_frame_id = lidar_str;
+            transformStamped.transform.translation.x = t_wl.x();
+            transformStamped.transform.translation.y = t_wl.y();
+            transformStamped.transform.translation.z = t_wl.z();
+            transformStamped.transform.rotation.w = q_wl.w();
+            transformStamped.transform.rotation.x = q_wl.x();
+            transformStamped.transform.rotation.y = q_wl.y();
+            transformStamped.transform.rotation.z = q_wl.z();
+            br->sendTransform(transformStamped);
+            id_lidar++;
+        }                 
     }
 
     void startCallBack(const std_msgs::msg::Int64::SharedPtr start_time_msg)

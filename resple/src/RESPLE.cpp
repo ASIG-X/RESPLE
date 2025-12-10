@@ -192,8 +192,8 @@ private:
     rclcpp::Publisher<estimate_msgs::msg::Estimate>::SharedPtr pub_est;
     rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr pub_start_time;
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
-    const std::string frame_id = "base_link";
-    const std::string odom_id = "odom";    
+    const std::string frame_id = "body";
+    const std::string odom_id = "world";    
 
     std::map<std::string, LidarConfig> lidars;
     float ds_lm_voxel;

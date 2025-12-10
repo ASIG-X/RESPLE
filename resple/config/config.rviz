@@ -7,7 +7,11 @@ Panels:
         - /Global Options1
         - /Status1
         - /Grid1/Offset1
+        - /Frames1
+        - /Frames1/TF1
         - /Frames1/TF1/Frames1
+        - /Frames1/world1
+        - /Frames1/body1
         - /global_map1
         - /current_scan1
       Splitter Ratio: 0.5733944773674011
@@ -87,13 +91,13 @@ Visualization Manager:
           Frame Timeout: 9999
           Frames:
             All Enabled: true
-            base_link:
+            body:
               Value: true
-            imu:
+            imu_frame:
               Value: true
-            lidar:
+            lidar0_frame:
               Value: true
-            odom:
+            world:
               Value: true
           Marker Scale: 1
           Name: TF
@@ -101,27 +105,28 @@ Visualization Manager:
           Show Axes: true
           Show Names: true
           Tree:
-            odom:
-              base_link:
-                imu:
-                  {}
-                lidar:
-                  {}
+            world:
+              body:
+                {}
+              imu_frame:
+                {}
+              lidar0_frame:
+                {}
           Update Interval: 0
           Value: true
         - Class: rviz_default_plugins/Axes
           Enabled: true
           Length: 1
-          Name: odom
+          Name: world
           Radius: 0.25
-          Reference Frame: odom
+          Reference Frame: world
           Value: true
         - Class: rviz_default_plugins/Axes
           Enabled: true
           Length: 1
-          Name: base_link
+          Name: body
           Radius: 0.25
-          Reference Frame: base_link
+          Reference Frame: body
           Value: true
       Enabled: true
       Name: Frames
@@ -140,7 +145,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 150
+      Max Intensity: 157
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: global_map
@@ -224,7 +229,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
-    Fixed Frame: odom
+    Fixed Frame: world
     Frame Rate: 10
   Name: root
   Tools:
@@ -267,25 +272,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 26.922582626342773
+      Distance: 21.36376953125
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.27047592401504517
-        Y: 3.6578409671783447
-        Z: -0.02397032640874386
+        X: -0.030776316300034523
+        Y: 0.425124853849411
+        Z: 0.3248748779296875
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 0.12979687750339508
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.5055651664733887
+      Yaw: 5.15057373046875
     Saved: ~
 Window Geometry:
   Displays:
@@ -301,5 +306,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1440
-  X: 240
-  Y: 110
+  X: 1408
+  Y: 254
