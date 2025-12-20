@@ -7,11 +7,11 @@ def generate_launch_description():
     config_yaml_fusion = os.path.join(
         get_package_share_directory('resple'),
         'config',
-        'config_ntu_day_01.yaml')    
+        'config_ntu_day_01_ouster.yaml')    
     config_rviz = os.path.join(
         get_package_share_directory('resple'),
         'config',
-        'config.rviz')     
+        'config.rviz')             
     return launch.LaunchDescription([          	
         launch_ros.actions.Node(
             package='rviz2',
@@ -37,6 +37,6 @@ def generate_launch_description():
             name='Mapping',
             emulate_tty=True,
             output='log',
-            parameters=[config_yaml_fusion])                                    
+            parameters=[config_yaml_fusion])                                           
   ])
 
