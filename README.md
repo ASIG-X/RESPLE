@@ -1,6 +1,11 @@
 # RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry
 [**YouTube**](https://youtu.be/3-xLRRT25ys) | **[arXiv](https://arxiv.org/abs/2504.11580)** | **[Website](https://asig-x.github.io/resple_web/)** | **[IEEE RA-L](https://doi.org/10.1109/LRA.2025.3604758)**
 
+### News
+* 2025-12: Additional evaluation results of RESPLE-LIO and corresponding parameter sets on the [Newer College](https://ori-drs.github.io/newer-college-dataset/) dataset (including its extension) and the [MCD](https://mcdviral.github.io/) dataset are now available on our [web page](https://asig-x.github.io/resple_web/add_evaluation.html). Instructions for testing are given below.
+* 2025-09: The [TudoRun](https://asig-x.github.io/resple_web/datasets.html) dataset is released as a supplementary dataset.
+
+
 This is the offcial repository for RESPLE, the first B-spline-based recursive state estimation framework for estimating 6-DoF dynamic motions. Using RESPLE as the estimation backbone, we developed a unified suite of direct LiDAR-based odometry systems, including:
 * LiDAR-only odometry (LO)
 * LiDAR-inertial odometry (LIO)
@@ -118,7 +123,7 @@ ros2 bag play /path/to/bag/
 * [MCD](https://mcdviral.github.io/) dataset (Livox Mid70)
 ```
 source install/setup.bash
-ros2 launch resple resple_ntu_day_01.launch.py
+ros2 launch resple resple_ntu_day_01_livox.launch.py
 # Open another terminal and run
 source install/setup.bash
 ros2 bag play /path/to/bag/
@@ -132,6 +137,35 @@ ros2 launch resple resple_heap_testsite_hoenggerberg.launch.py
 # Open another terminal and run
 source install/setup.bash
 ros2 bag play /path/to/hesai_livox_ap20_converted.mcap
+```
+
+* [Newer College](https://ori-drs.github.io/newer-college-dataset/stereo-cam/) (OUSTER OS1-64)
+```
+source install/setup.bash
+ros2 launch resple resple_nc_short.launch.py
+# Open another terminal and run
+source install/setup.bash
+ros2 bag play /path/to/bag/
+```
+
+* [Extension to Newer College](https://ori-drs.github.io/newer-college-dataset/multi-cam/) (OUSTER OS0-128)
+```
+source install/setup.bash
+ros2 launch resple resple_nce_quad.launch.py # for outdoor sequences
+# ros2 launch resple resple_nce_stairs.launch.py # for indoor sequences Stairs and Mine-*
+# Open another terminal and run
+source install/setup.bash
+ros2 bag play /path/to/bag/
+```
+
+* [MCD](https://mcdviral.github.io/) dataset (OUSTER OS1-64-VN200 or OS1-128-VN100)
+```
+source install/setup.bash
+ros2 launch resple resple_ntu_day_01_ouster.launch.py # for sequences ntu_*
+# ros2 launch resple resple_kth_day_06_ouster.launch.py # for sequences kth_* and tuhh_*
+# Open another terminal and run
+source install/setup.bash
+ros2 bag play /path/to/bag/
 ```
 
 ### Docker
