@@ -21,6 +21,8 @@
 #include "livox_interfaces/msg/custom_msg.hpp"
 #include "estimate_msgs/msg/calib.hpp"
 #include "estimate_msgs/msg/estimate.hpp"
+#include "mocap4r2_msgs/msg/markers.hpp"
+#include "mocap4r2_msgs/msg/rigid_bodies.hpp"
 #include "SplineState.h"
 
 template<typename PointType>
@@ -425,6 +427,18 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
         vis_maps = mappings;
         pub_odom = nh->create_publisher<nav_msgs::msg::Odometry>("odometry", 500);
         br = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
+        if_save_results = CommonUtils::readParam<bool>(nh, "if_save_results", false);
+        if (if_save_results) {
+            std::string gt_topic = CommonUtils::readParam<std::string>(nh, "topic_gt");
+            sub_gt = nh->create_subscription<mocap4r2_msgs::msg::RigidBodies>(gt_topic, 100, std::bind(&Mapping::getGTCallback, this, std::placeholders::_1));            
+            res_file_path = CommonUtils::readParam<std::string>(nh, "res_file_path");            
+            t_l_gt = CommonUtils::readVector3d(nh, "t_l_gt");
+            std::vector<double> q_l_gt_v;
+            q_l_gt_v = CommonUtils::readParam<std::vector<double>>(nh, "q_l_gt");
+            q_l_gt = Eigen::Quaterniond(q_l_gt_v[0], q_l_gt_v[1], q_l_gt_v[2], q_l_gt_v[3]);
+            srv_finalize = nh->create_service<std_srvs::srv::Empty>(
+                "/if_finish", std::bind(&Mapping::finalizeService, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));              
+        }
     }
 
     void lock_mappings() {
@@ -442,7 +456,7 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
     void process() {
         rclcpp::Rate rate(20);
         int64_t num_knot = 0;
-        while (true) {
+        while (!if_finished) {
             if (if_init_succeed && spline_global.numKnots() > num_knot) {
                 lock_mappings();
                 publishPath();
@@ -457,9 +471,44 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
             }
             for (const auto vis_map : vis_maps) {
                 vis_map->processScan(&spline_global, spl_window_st_ns);  
-            }                     
+            }                                
         }
-    }
+    }   
+
+    void saveResults()
+    {
+        if (if_save_results) {
+            Eigen::Quaterniond q_bl = vis_maps[0]->lidar.q_bl;
+            Eigen::Vector3d t_bl = vis_maps[0]->lidar.t_bl;
+            Eigen::aligned_vector<PoseData> est;
+            for (const PoseData& gt_data : gt) {
+                int64_t t_ns = gt_data.time_ns;
+                if (t_ns >= spline_global.minTimeNs() && t_ns <= spline_global.maxTimeNs()) {
+                    Eigen::Quaterniond q_wb;
+                    spline_global.itpQuaternion(t_ns, &q_wb);
+                    Eigen::Vector3d t_wb = spline_global.itpPosition(t_ns); 
+                    Eigen::Quaterniond q_wl = q_wb * q_bl;
+                    Eigen::Vector3d t_wl = q_wb * t_bl + t_wb;                    
+                    Eigen::Quaterniond q_w_gt = q_wl * q_l_gt;
+                    Eigen::Vector3d t_w_gt = q_wl * t_l_gt + t_wl;
+
+                    PoseData itp_est;
+                    itp_est.time_ns = t_ns;
+                    itp_est.orient = q_w_gt;
+                    itp_est.pos = t_w_gt;
+                    est.push_back(itp_est);
+                } 
+            }
+            CommonUtils::savePoseTUM(res_file_path, est);
+        }
+    }    
+
+    void finalizeService(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<std_srvs::srv::Empty::Request>,
+                        const std::shared_ptr<std_srvs::srv::Empty::Response>)
+    {
+        if_finished = true;
+        rclcpp::shutdown();
+    }        
 
 private:
     std::string node_name = "Mapping";
@@ -477,6 +526,15 @@ private:
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
     bool if_init_succeed = false;
     std::mutex m_spline;    
+
+    bool if_save_results = false;
+    bool if_finished = false;
+    rclcpp::Subscription<mocap4r2_msgs::msg::RigidBodies>::SharedPtr sub_gt;    
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr srv_finalize;
+    std::string res_file_path;
+    Eigen::aligned_vector<PoseData> gt;
+    Eigen::Quaterniond q_l_gt;
+    Eigen::Vector3d t_l_gt;      
 
     void displayControlPoints()
     {
@@ -515,6 +573,20 @@ private:
         spline_global.setTimeIntervalNs(spline_msg.dt);
         spline_global.updateKnots(&spline_w);
         unlock_mappings();
+    }
+
+    void getGTCallback(const mocap4r2_msgs::msg::RigidBodies::SharedPtr msg_in)
+    {
+        int idx_gt = 4;
+        const auto& gt_pose = msg_in->rigidbodies[idx_gt].pose;
+        if (isnan(gt_pose.position.x)) {
+            return;
+        }
+        Eigen::Quaterniond orient_gt = Eigen::Quaterniond(gt_pose.orientation.w, gt_pose.orientation.x, gt_pose.orientation.y, gt_pose.orientation.z);
+        Eigen::Vector3d pos_gt = Eigen::Vector3d(gt_pose.position.x, gt_pose.position.y, gt_pose.position.z);
+        int64_t time_ns = rclcpp::Time(msg_in->header.stamp).nanoseconds();
+        PoseData pose(time_ns, orient_gt, pos_gt);
+        gt.push_back(pose);
     }
 
     void pubOdom()
@@ -630,6 +702,7 @@ int main(int argc, char** argv) {
     Mapping mapping(nh, buffs);
     std::thread mappingThread{&Mapping::process, &mapping};
     rclcpp::spin(nh);
+    mapping.saveResults();
     mappingThread.join();
     rclcpp::shutdown();
 }

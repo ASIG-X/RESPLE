@@ -78,7 +78,10 @@ public:
                 sub_livox_mid360_boxi = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
                         lidar.topic, 200000, std::bind(&RESPLE::livoxMid360BoxiCallback, this, std::placeholders::_1));
             }
-        }        
+        }       
+        if (if_auto_exit) {
+            client_finish = nh->create_client<std_srvs::srv::Empty>("/if_finish");
+        } 
     }
 
     void processData()
@@ -86,7 +89,7 @@ public:
         rclcpp::Rate rate(20);
         int64_t max_spl_knots = 0;
         int64_t t_last_map_upd = 0;
-        while (true) {      
+        while (!if_finished) {      
             for (auto& [lidar_name, lidar_data] : lidars_data) {
                 while (!lidar_data.t_buff.empty()) {
                     pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_frame(new pcl::PointCloud<pcl::PointXYZINormal>());
@@ -144,6 +147,7 @@ public:
                     estimator_lio.propRCP(max_time_ns);
                     estimator_lio.updateIEKFLiDARInertial(pt_meas, &ikdtree, param.nn_thresh, imu_meas, gravity, param.cov_acc, param.cov_gyro, param.coeff_cov);  
                 }
+                est_count++;
                 #pragma omp parallel for num_threads(NUM_OF_THREAD)
                 for (size_t i = 0; i < pt_meas.size(); i++) {
                     PointData& pt_data = pt_meas[i];            
@@ -175,7 +179,32 @@ public:
                 }
             }                      
         }
-    }    
+    }   
+    
+    bool checkFinish()
+    {
+        if (!if_auto_exit) {
+            return false;
+        }
+        static int wc = 0;
+        static double idle_time = rclcpp::Clock(RCL_ROS_TIME).now().seconds();
+        double idle_time_cur = rclcpp::Clock(RCL_ROS_TIME).now().seconds();
+        if(est_count != wc && est_count != 0) {
+            idle_time = idle_time_cur;
+        } else if (est_count != 0 && (idle_time_cur - idle_time > 5)) {
+            if_finished = true;
+        }
+        wc = est_count;
+        if (if_finished) {
+            auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+            auto result = client_finish->async_send_request(request);
+            rclcpp::Rate rate(10);
+            while (!result.valid()) {
+                rate.sleep();
+            }
+        }
+        return if_finished;
+    }        
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -249,6 +278,11 @@ private:
     const std::string baselink_frame = "base_link";
     const std::string odom_frame = "odom";
 
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr client_finish;
+    bool if_auto_exit = false;
+    int est_count = 0;
+    bool if_finished = false;  
+
     void readParameters(rclcpp::Node::SharedPtr &nh)
     {
         ds_lm_voxel = CommonUtils::readParam<float>(nh, "ds_lm_voxel");
@@ -295,6 +329,7 @@ private:
         NUM_MATCH_POINTS = CommonUtils::readParam<int>(nh, "num_nn", 5);
         double lidar_time_offset = CommonUtils::readParam<double>(nh, "lidar_time_offset", 0.0);
         time_offset = 1e9*lidar_time_offset;
+        if_auto_exit = CommonUtils::readParam<bool>(nh, "if_save_results", false);
     }
 
     void initFilter(int64_t start_t_ns, Eigen::Vector3d t_init = Eigen::Vector3d::Zero(), Eigen::Quaterniond q_init = Eigen::Quaterniond::Identity())
@@ -871,6 +906,9 @@ int main(int argc, char *argv[])
     std::thread opt{&RESPLE::processData, &resple};
     while (rclcpp::ok()) {
         rclcpp::spin_some(nh);
+        if(resple.checkFinish()) {
+            break;
+        }        
         rate.sleep();
     }
     opt.join();

@@ -24,6 +24,7 @@
   <depend>livox_ros_driver2</depend>
   <depend>livox_interfaces</depend>
   <depend>estimate_msgs</depend>
+  <depend>mocap4r2_msgs</depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>  

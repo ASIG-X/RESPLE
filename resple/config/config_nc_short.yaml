@@ -38,3 +38,9 @@
     cov_bg: [0.2, 0.2, 0.2]      
     n_iter: 1
     num_points_upd: 300
+
+    if_save_results: false
+    topic_gt: /topic_name
+    res_file_path: /path/to/results.txt
+    q_l_gt: [1.0, 0.0, 0.0, 0.0]        
+    t_l_gt: [0.0, 0.0, 0.0]        

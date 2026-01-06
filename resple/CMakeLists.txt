@@ -18,6 +18,7 @@ find_package(livox_interfaces REQUIRED)
 find_package(livox_ros_driver REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
 find_package(estimate_msgs REQUIRED)
+find_package(mocap4r2_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(ament_lint_auto REQUIRED)
 find_package(PCL REQUIRED)
@@ -55,6 +56,7 @@ add_executable(RESPLE src/RESPLE.cpp include/ikd-Tree/ikd_Tree.cpp)
 	pcl_conversions
 	ament_lint_auto
 	tf2_ros
+	mocap4r2_msgs
 )
 target_link_libraries(RESPLE
 		${PROJECT_NAME}
@@ -75,6 +77,6 @@ install(TARGETS RESPLE
   DESTINATION lib/${PROJECT_NAME})
 install(TARGETS Mapping
   DESTINATION lib/${PROJECT_NAME})
-ament_export_dependencies(rclcpp yaml-cpp message_runtime livox_ros_driver livox_ros_driver2 livox_interfaces)
+ament_export_dependencies(rclcpp yaml-cpp message_runtime livox_ros_driver livox_ros_driver2 livox_interfaces mocap4r2_msgs)
 ament_export_libraries(${PROJECT_NAME})
 ament_package()
