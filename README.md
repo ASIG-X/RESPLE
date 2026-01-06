@@ -2,7 +2,7 @@
 [**YouTube**](https://youtu.be/3-xLRRT25ys) | **[arXiv](https://arxiv.org/abs/2504.11580)** | **[Website](https://asig-x.github.io/resple_web/)** | **[IEEE RA-L](https://doi.org/10.1109/LRA.2025.3604758)** | **[Demonstrator](https://asig-x.github.io/resple_demonstrator/)**
 
 ### News
-* 2026-01: A new feature is now available to save estimated trajectories specifically for benchmarking. Please check out the branch with instruction [here](https://github.com/ASIG-X/RESPLE/tree/feature/benchmark).
+* 2026-01: A new feature is now available to save estimated trajectories specifically for benchmarking. Please check out the branch [here](https://github.com/ASIG-X/RESPLE/tree/feature/benchmark). An example using the HelmDyn dataset can be found [here](https://github.com/ASIG-X/RESPLE/blob/feature/benchmark/resple/config/config_helmdyn01.yaml). The estimated trajectory will be generated through spline interpolation at ground-truth timestamps in a `.txt` file following the [TUM format](https://github.com/MichaelGrupp/evo/wiki/Formats).
 * 2025-12: The design of a handheld demostrator for RESPLE is now publicly available. Check out our web page [here](https://asig-x.github.io/resple_demonstrator/).
 * 2025-12: Additional evaluation results of RESPLE-LIO and corresponding parameter sets on the [Newer College](https://ori-drs.github.io/newer-college-dataset/) dataset (including its extension) and the [MCD](https://mcdviral.github.io/) dataset are now available on our [web page](https://asig-x.github.io/resple_web/add_evaluation.html). Instructions for testing are given below.
 * 2025-09: The [TudoRun](https://asig-x.github.io/resple_web/datasets.html) dataset is released as a supplementary dataset.
