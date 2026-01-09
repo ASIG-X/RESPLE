@@ -1,28 +1,28 @@
 /**:
   ros__parameters:
-    topic_imu: /gt_box/livox/imu
-    acc_ratio: true 
-    lidars: ["livox", "hesai"]
-    livox:
-      topic_lidar: /gt_box/livox/lidar 
-      lidar_type: Mid360Boxi
-      scan_line: 4
-      blind: 0.5
-      q_lb: [0.999976, 0.000002, 0.000670, 0.006906]
-      t_lb: [0.010345, 0.022305, -0.033211]
-      w_pt: 0.01
+    topic_imu: /boxi/livox/imu
+    acc_ratio: false 
+    lidars: ["hesai"]
     hesai:
-      topic_lidar: /gt_box/hesai/points 
+      topic_lidar: /boxi/hesai/points
       lidar_type: Hesai
       scan_line: 32
       blind: 0.5
-      q_lb: [0.000793920391926, -0.703743110426531, 0.710453977622183, -0.000387167175118]
-      t_lb: [-0.016286160655580, -0.010352248240829, 0.128925315833111]
+      q_lb: [0.00122352, -0.70514220, 0.70906315, -0.00155726]
+      t_lb: [-0.01919177, -0.00717359, 0.13830923]
       w_pt: 0.01
+    livox:
+      topic_lidar: /boxi/livox/points
+      lidar_type: Mid360Boxi
+      scan_line: 4
+      blind: 0.5
+      q_lb: [0.9999859462903373, 0.0009368971075961205, 0.0014695456614890199, 0.005006983241176387]
+      t_lb:  [0.006519576780980849, 0.02440717559132296, -0.041714503937502645]
+      w_pt: 0.01      
     lidar_time_offset: 0.0
 
     knot_hz: 100
-    if_lidar_only: true
+    if_lidar_only: false
     
     ds_scan_voxel: 0.5
     point_filter_num: 1
@@ -46,3 +46,6 @@
     cov_bg: [0.2, 0.2, 0.2]      
     n_iter: 1   
     num_points_upd: 300
+
+    if_save_results: true
+    res_file_path: /home/yeah2/Documents/eval_benchmark/bm_gt_test/PIL1_est.txt

@@ -30,6 +30,7 @@ class MappingBase
 
     std::mutex mtx;    
     LidarConfig lidar;
+
     MappingBase(rclcpp::Node::SharedPtr &nh, const LidarConfig& lidar_config) : lidar(lidar_config)
     {
         pub_global_map = nh->create_publisher<sensor_msgs::msg::PointCloud2>("global_map", 2);
@@ -115,7 +116,6 @@ class MappingBase
     const std::string frame_id = "body";
     const std::string odom_id = "world";
     typename pcl::PointCloud<PointType>::Ptr pc;
-
 };
 
 
@@ -425,6 +425,8 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
         vis_maps = mappings;
         pub_odom = nh->create_publisher<nav_msgs::msg::Odometry>("odometry", 500);
         br = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
+        srv_finalize = nh->create_service<std_srvs::srv::Empty>(
+            "/if_finish", std::bind(&Mapping::finalizeService, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));         
     }
 
     void lock_mappings() {
@@ -442,7 +444,7 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
     void process() {
         rclcpp::Rate rate(20);
         int64_t num_knot = 0;
-        while (true) {
+        while (!if_finished) {
             if (if_init_succeed && spline_global.numKnots() > num_knot) {
                 lock_mappings();
                 publishPath();
@@ -459,6 +461,13 @@ Mapping(rclcpp::Node::SharedPtr &nh, std::vector<MappingBase<pcl::PointXYZINorma
                 vis_map->processScan(&spline_global, spl_window_st_ns);  
             }                     
         }
+    }   
+
+    void finalizeService(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<std_srvs::srv::Empty::Request>,
+                        const std::shared_ptr<std_srvs::srv::Empty::Response>)
+    {
+        if_finished = true;
+        rclcpp::shutdown();        
     }
 
 private:
@@ -477,6 +486,10 @@ private:
     std::shared_ptr<tf2_ros::TransformBroadcaster> br;
     bool if_init_succeed = false;
     std::mutex m_spline;    
+
+    bool if_finished = false;
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr srv_finalize;
+    std::string res_file_path;    
 
     void displayControlPoints()
     {

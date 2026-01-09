@@ -50,11 +50,13 @@ public:
         if (lidar_names.empty()) {
             LidarConfig lidar(nh, "");
             lidars.emplace(lidar.type, lidar);
+            lidar_types.push_back(lidar.type);
             lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
         } else {
             for (const auto& lidar_name : lidar_names) {
                 LidarConfig lidar(nh, lidar_name + ".");
                 lidars.emplace(lidar.type, lidar);
+                lidar_types.push_back(lidar.type);
                 lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
             }
         }    
@@ -78,17 +80,22 @@ public:
                 sub_livox_mid360_boxi = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
                         lidar.topic, 200000, std::bind(&RESPLE::livoxMid360BoxiCallback, this, std::placeholders::_1));
             }
-        }        
+        }   
+        if (if_save_results) {
+            client_finish = nh->create_client<std_srvs::srv::Empty>("/if_finish");
+        }              
     }
 
     void processData()
     {
-        rclcpp::Rate rate(20);
+        rclcpp::Rate rate(5000);
         int64_t max_spl_knots = 0;
         int64_t t_last_map_upd = 0;
-        while (true) {      
+        static int64_t next_lidar_end_time = 0;
+        static bool if_process_next_lidar = true;
+        while (!if_finished) {     
             for (auto& [lidar_name, lidar_data] : lidars_data) {
-                while (!lidar_data.t_buff.empty()) {
+                if (!lidar_data.t_buff.empty()) {
                     pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_frame(new pcl::PointCloud<pcl::PointXYZINormal>());
                     lidar_data.mtx_pc.lock();
                     pc_frame->points = lidar_data.pc_buff.front();
@@ -108,8 +115,16 @@ public:
                         PointData pt(pc_last_ds->points[i], time_begin, lidar.q_bl, lidar.t_bl, lidar.w_pt);
                         lidar_data.pt_buff.push_back(pt);
                     }
+                    if (if_process_next_lidar) {
+                        next_lidar_end_time = lidar_data.pt_buff.back().time_ns;
+                        if_process_next_lidar = false;
+                    }
                 }
-            }            
+            }         
+            if (!if_lidar_only && last_imu_ns < next_lidar_end_time) {
+                continue;
+            }
+            if_process_next_lidar = true;
             if (!if_lidar_only && !imu_int_buff.empty()) {
                 m_buff.lock();
                 Eigen::aligned_vector<sensor_msgs::msg::Imu::SharedPtr> imu_buff_msg = imu_int_buff;
@@ -124,7 +139,7 @@ public:
                     ImuData imu(t_ns, gyro, acc); 
                     imu_buff.push_back(imu);
                 }
-            }
+            } 
             if(!initialization()) {
                 rate.sleep();
                 continue;
@@ -144,6 +159,7 @@ public:
                     estimator_lio.propRCP(max_time_ns);
                     estimator_lio.updateIEKFLiDARInertial(pt_meas, &ikdtree, param.nn_thresh, imu_meas, gravity, param.cov_acc, param.cov_gyro, param.coeff_cov);  
                 }
+                est_count++;
                 #pragma omp parallel for num_threads(NUM_OF_THREAD)
                 for (size_t i = 0; i < pt_meas.size(); i++) {
                     PointData& pt_data = pt_meas[i];            
@@ -173,9 +189,58 @@ public:
                     accum_nearest_points.clear();
                     t_last_map_upd = max_time_ns;
                 }
-            }                      
+            }      
         }
-    }    
+    }        
+
+    bool checkFinish()
+    {
+        if (!if_save_results) {
+            return false;
+        }
+        static int wc = 0;
+        static double idle_time = rclcpp::Clock(RCL_ROS_TIME).now().seconds();
+        double idle_time_cur = rclcpp::Clock(RCL_ROS_TIME).now().seconds();
+        if(est_count != wc && est_count != 0) {
+            idle_time = idle_time_cur;
+        } else if (est_count != 0 && (idle_time_cur - idle_time > 15)) {
+            if_finished = true;
+        }
+        wc = est_count;
+        if (if_finished) {
+            auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+            auto result = client_finish->async_send_request(request);
+            rclcpp::Rate rate(10);
+            while (!result.valid()) {
+                rate.sleep();
+            }
+        }
+        return if_finished;
+    }        
+
+    void saveResults()
+    {
+        if (if_save_results) {
+            const auto& lidar_cfg = lidars.at(lidar_types[0]);
+            Eigen::Quaterniond q_bl = lidar_cfg.q_bl;
+            Eigen::Vector3d t_bl = lidar_cfg.t_bl;
+            Eigen::aligned_vector<PoseData> est;
+            for (int64_t t_ns = spline->minTimeNs(); t_ns <= spline->maxTimeNs(); t_ns += 1e7) {
+                Eigen::Quaterniond q_wb;
+                spline->itpQuaternion(t_ns, &q_wb);
+                Eigen::Vector3d t_wb = spline->itpPosition(t_ns); 
+                Eigen::Quaterniond q_wl = q_wb * q_bl;
+                Eigen::Vector3d t_wl = q_wb * t_bl + t_wb;     
+
+                PoseData itp_est;
+                itp_est.time_ns = t_ns;
+                itp_est.orient = q_wl;
+                itp_est.pos = t_wl;
+                est.push_back(itp_est);
+            }
+            CommonUtils::savePoseTUM(res_file_path, est);
+        }
+    }        
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -195,6 +260,7 @@ private:
     const std::string frame_id = "body";
     const std::string odom_id = "world";    
 
+    std::vector<std::string> lidar_types;
     std::map<std::string, LidarConfig> lidars;
     float ds_lm_voxel;
     pcl::VoxelGrid<pcl::PointXYZINormal> ds_filter_body;    
@@ -203,6 +269,7 @@ private:
     pcl::PointCloud<pcl::PointXYZINormal> pc_world;
     int point_filter_num = 1;
     int64_t time_offset = 0;
+    int64_t last_imu_ns = 0;
 
     std::vector<BoxPointType> cub_needrm;
     BoxPointType LocalMap_Points;
@@ -248,6 +315,12 @@ private:
     
     const std::string baselink_frame = "base_link";
     const std::string odom_frame = "odom";
+
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr client_finish;
+    bool if_save_results = false;
+    int est_count = 0;
+    bool if_finished = false;     
+    std::string res_file_path;    
 
     void readParameters(rclcpp::Node::SharedPtr &nh)
     {
@@ -295,6 +368,10 @@ private:
         NUM_MATCH_POINTS = CommonUtils::readParam<int>(nh, "num_nn", 5);
         double lidar_time_offset = CommonUtils::readParam<double>(nh, "lidar_time_offset", 0.0);
         time_offset = 1e9*lidar_time_offset;
+        if_save_results = CommonUtils::readParam<bool>(nh, "if_save_results", false);
+        if (if_save_results) {        
+            res_file_path = CommonUtils::readParam<std::string>(nh, "res_file_path");            
+        }               
     }
 
     void initFilter(int64_t start_t_ns, Eigen::Vector3d t_init = Eigen::Vector3d::Zero(), Eigen::Quaterniond q_init = Eigen::Quaterniond::Identity())
@@ -329,6 +406,7 @@ private:
         m_buff.lock();
         imu_int_buff.push_back(imu_msg);
         m_buff.unlock();        
+        last_imu_ns = rclcpp::Time(imu_msg->header.stamp).nanoseconds();
     }    
 
     template<typename T>
@@ -701,7 +779,7 @@ private:
 
     bool collectMeasurements()
     {
-        rclcpp::Rate rate(20);
+        rclcpp::Rate rate(5000);
         int64_t pt_min_time = std::numeric_limits<int64_t>::max();
         int64_t pt_max_time = std::numeric_limits<int64_t>::max();            
         for (const auto& [lidar_name, lidar_data] : lidars_data) {
@@ -867,12 +945,16 @@ int main(int argc, char *argv[])
     auto nh = rclcpp::Node::make_shared("RESPLE");
     RESPLE resple(nh);
     RCLCPP_INFO_STREAM(nh->get_logger(), "RESPLE starts!");
-    rclcpp::Rate rate(200);
+    rclcpp::Rate rate(5000);
     std::thread opt{&RESPLE::processData, &resple};
     while (rclcpp::ok()) {
         rclcpp::spin_some(nh);
+        if(resple.checkFinish()) {
+            break;
+        }              
         rate.sleep();
     }
+    resple.saveResults();
     opt.join();
     rclcpp::shutdown();
 }

@@ -127,6 +127,27 @@ public:
         return Eigen::Vector3d(v[0], v[1], v[2]);
     }          
 
+
+    static void savePoseTUM(const std::string& file_path, const Eigen::aligned_vector<PoseData>& pose)
+    {
+        if (pose.empty()) {
+            return;
+        }
+        std::filesystem::path p(file_path);
+        std::string dir = p.parent_path().string() + "/";        
+        if (!std::filesystem::is_directory(dir) || !std::filesystem::exists(dir)) {
+            std::filesystem::create_directories(dir);
+        }
+        std::ofstream f(file_path);
+        for (const auto& it : pose) {
+            int64_t t_ns = it.time_ns;
+            f << std::fixed << t_ns * 1e-9 << std::setprecision(7) << " " << it.pos.x() << " "
+                << it.pos.y() << " " << it.pos.z() << " " << it.orient.x() << " " << it.orient.y()
+                << " " << it.orient.z()  << " " << it.orient.w() << std::endl;
+        }
+        f.close();
+    }        
+
     static Eigen::Vector3d R2ypr(const Eigen::Matrix3d &R)
     {
         Eigen::Vector3d n = R.col(0);
