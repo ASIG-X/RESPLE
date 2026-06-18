@@ -12,6 +12,7 @@
       t_lb: [0.011, 0.02329, -0.04412]  
       w_pt: 0.01 
     lidar_time_offset: 0.0
+    pcd_save_path: "/tmp/resple_map_helmdyn01.pcd"
 
     knot_hz: 100
     if_lidar_only: true
@@ -23,6 +24,7 @@
     num_nn: 8
 
     ds_lm_voxel: 0.5
+    ds_map_voxel: 0.2
     cube_len: 1000.0
 
     cov_P0: 0.02

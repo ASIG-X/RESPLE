@@ -171,6 +171,44 @@ source install/setup.bash
 ros2 bag play /path/to/bag/
 ```
 
+### Map Saving
+
+Two ways to save the map as a `.pcd` file are available.
+
+**Option 1 — Save the RESPLE odometry map via service call**
+
+The `RESPLE` node exposes a `save_map` service that saves the current ikd-tree map directly to disk. Call it at any point while the node is running:
+
+```bash
+ros2 service call /save_map std_srvs/srv/Empty
+```
+
+The output path defaults to `/tmp/resple_map_<config_name>.pcd` and can be changed per config via the `pcd_save_path` parameter in the corresponding `config_xxx.yaml`.
+
+**Option 2 — Accumulate and save a dense global map via the MapSaving node**
+
+The `MapSaving` node subscribes to the `global_map` topic published by the `Mapping` node, accumulates all incoming point clouds into a single dense map, and saves it on demand:
+
+```bash
+# Launch the MapSaving node (alongside the normal RESPLE + Mapping launch)
+ros2 run resple MapSaving --ros-args -p pcd_save_path:=/path/to/output.pcd
+
+# Save the accumulated map at any time
+ros2 service call /save_map_node std_srvs/srv/Empty
+```
+
+**Relevant parameters** (set in `config_xxx.yaml` or via `--ros-args`):
+
+| Parameter | Default | Description |
+|---|---|---|
+| `pcd_save_path` | `/tmp/resple_map_<config>.pcd` | Output path for the saved `.pcd` file |
+| `ds_map_voxel` | `0.2` | Voxel leaf size (m) applied to each scan before publishing on `global_map` |
+
+To view a saved `.pcd` file:
+```bash
+pcl_viewer /path/to/output.pcd
+```
+
 ### Docker
 
 With the docker image built (see docker build instructions), one can run the run the algorithm in a docker container by following these steps.

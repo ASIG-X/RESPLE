@@ -71,9 +71,22 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME})
+add_executable(MapSaving src/MapSaving.cpp)
+ament_target_dependencies(MapSaving
+    rclcpp
+    sensor_msgs
+    std_srvs
+    pcl_conversions
+)
+target_link_libraries(MapSaving
+    ${PCL_LIBRARIES}
+)
+
 install(TARGETS RESPLE
   DESTINATION lib/${PROJECT_NAME})
 install(TARGETS Mapping
+  DESTINATION lib/${PROJECT_NAME})
+install(TARGETS MapSaving
   DESTINATION lib/${PROJECT_NAME})
 ament_export_dependencies(rclcpp yaml-cpp message_runtime livox_ros_driver livox_ros_driver2 livox_interfaces)
 ament_export_libraries(${PROJECT_NAME})

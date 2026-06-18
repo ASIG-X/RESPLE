@@ -12,6 +12,7 @@
       t_lb: [0.0484694014435750, -0.0313099101543345, -0.0187614619618876]
       w_pt: 0.5
     lidar_time_offset: 0.1
+    pcd_save_path: "/tmp/resple_map_kth_day_06_ouster.pcd"
 
     knot_hz: 100
     if_lidar_only: false
@@ -23,6 +24,7 @@
     num_nn: 5
 
     ds_lm_voxel: 0.5
+    ds_map_voxel: 0.2
     cube_len: 2000.0
 
     cov_P0: 0.02

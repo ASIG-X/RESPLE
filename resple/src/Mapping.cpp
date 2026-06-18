@@ -33,7 +33,8 @@ class MappingBase
     MappingBase(rclcpp::Node::SharedPtr &nh, const LidarConfig& lidar_config) : lidar(lidar_config)
     {
         pub_global_map = nh->create_publisher<sensor_msgs::msg::PointCloud2>("global_map", 2);
-        ds_filter_each_scan.setLeafSize(0.2, 0.2, 0.2);
+        float ds_map_voxel = CommonUtils::readParam<float>(nh, "ds_map_voxel", 0.2);
+        ds_filter_each_scan.setLeafSize(ds_map_voxel, ds_map_voxel, ds_map_voxel);
         pc_last.reset(new typename pcl::PointCloud<PointType>());
         pc_last_ds.reset(new typename pcl::PointCloud<PointType>());
         pc.reset(new typename pcl::PointCloud<PointType>());   

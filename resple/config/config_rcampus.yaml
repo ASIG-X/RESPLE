@@ -12,6 +12,7 @@
       t_lb: [-0.04165, -0.02326, 0.0284]
       w_pt: 0.01
     lidar_time_offset: 0.0  # time offset between lidar and IMU, unit: s
+    pcd_save_path: "/tmp/resple_map_rcampus.pcd"
     
     knot_hz: 100
     if_lidar_only: true # if true, use LiDAR-only odometry
@@ -23,6 +24,7 @@
     num_nn: 5
 
     ds_lm_voxel: 0.5
+    ds_map_voxel: 0.2
     cube_len: 1000.0
 
     cov_P0: 0.002

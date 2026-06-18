@@ -12,6 +12,7 @@
       t_lb: [-0.014, 0.012, 0.015]    
       w_pt: 0.05 
     lidar_time_offset: 0.0
+    pcd_save_path: "/tmp/resple_map_nce_stairs.pcd"
 
     knot_hz: 100
     if_lidar_only: false  
@@ -23,6 +24,7 @@
     num_nn: 8
 
     ds_lm_voxel: 0.5
+    ds_map_voxel: 0.2
     cube_len: 1000.0
 
     cov_P0: 0.02

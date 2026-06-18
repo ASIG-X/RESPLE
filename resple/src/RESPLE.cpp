@@ -20,6 +20,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/io/pcd_io.h>
 #include "livox_interfaces/msg/custom_msg.hpp"
 #include "livox_ros_driver/msg/custom_msg.hpp"
 #include "livox_ros_driver2/msg/custom_msg.hpp"
@@ -58,6 +59,8 @@ public:
                 lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
             }
         }    
+        srv_save_map = nh->create_service<std_srvs::srv::Empty>("save_map",
+            std::bind(&RESPLE::savePCDCallback, this, std::placeholders::_1, std::placeholders::_2));
         for (const auto& [lidar_name, lidar] : lidars) {
             if (!lidar.type.compare("Ouster")) {
                 sub_ouster = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -182,6 +185,9 @@ public:
 private:
 
     std::string node_name = "RESPLE";
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr srv_save_map;
+    std::string pcd_save_path;
+    std::mutex mtx_map;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_ouster;
     rclcpp::Subscription<livox_ros_driver::msg::CustomMsg>::SharedPtr sub_livox;
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_livox2;
@@ -295,6 +301,7 @@ private:
         NUM_MATCH_POINTS = CommonUtils::readParam<int>(nh, "num_nn", 5);
         double lidar_time_offset = CommonUtils::readParam<double>(nh, "lidar_time_offset", 0.0);
         time_offset = 1e9*lidar_time_offset;
+        pcd_save_path = CommonUtils::readParam<std::string>(nh, "pcd_save_path", std::string("/tmp/resple_map.pcd"));
     }
 
     void initFilter(int64_t start_t_ns, Eigen::Vector3d t_init = Eigen::Vector3d::Zero(), Eigen::Quaterniond q_init = Eigen::Quaterniond::Identity())
@@ -819,6 +826,7 @@ private:
         LocalMap_Points = New_LocalMap_Points;
 
         if(cub_needrm.size() > 0) {
+            std::lock_guard<std::mutex> lock(mtx_map);
             ikdtree.Delete_Point_Boxes(cub_needrm);
         }
     }    
@@ -855,8 +863,27 @@ private:
                 PointNoNeedDownsample.emplace_back(point);
             }
         }
+        std::lock_guard<std::mutex> lock(mtx_map);
         ikdtree.Add_Points(PointToAdd, true);
         ikdtree.Add_Points(PointNoNeedDownsample, false);
+    }
+
+    void savePCDCallback(const std::shared_ptr<std_srvs::srv::Empty::Request>,
+                         std::shared_ptr<std_srvs::srv::Empty::Response>)
+    {
+        Eigen::aligned_vector<pcl::PointXYZINormal> map_points;
+        {
+            std::lock_guard<std::mutex> lock(mtx_map);
+            ikdtree.flatten(ikdtree.Root_Node, map_points, NOT_RECORD);
+        }
+        pcl::PointCloud<pcl::PointXYZINormal> map_cloud;
+        map_cloud.points = map_points;
+        map_cloud.width = map_cloud.points.size();
+        map_cloud.height = 1;
+        map_cloud.is_dense = true;
+        pcl::io::savePCDFileBinary(pcd_save_path, map_cloud);
+        RCLCPP_INFO(rclcpp::get_logger(node_name), "Saved map to %s (%zu points)",
+            pcd_save_path.c_str(), map_cloud.size());
     }
 
 };
