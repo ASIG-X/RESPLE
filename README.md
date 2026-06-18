@@ -3,6 +3,7 @@
 
 --> [Branch for benchmarking](https://github.com/ASIG-X/RESPLE/tree/feature/benchmark)
 ### News
+* 2026-06: A new feature is now available to save maps as `.pcd` files. The `RESPLE` node exposes a `save_map` service to save the ikd-tree map on demand. A new `MapSaving` node is also available to accumulate and save the dense global map published by the `Mapping` node. Please check out the branch [here](https://github.com/ASIG-X/RESPLE/tree/feature/save_map).
 * 2026-01: A new feature is now available to save estimated trajectories specifically for benchmarking. Please check out the branch [here](https://github.com/ASIG-X/RESPLE/tree/feature/benchmark). An example using the HelmDyn dataset can be found [here](https://github.com/ASIG-X/RESPLE/blob/feature/benchmark/resple/config/config_helmdyn01.yaml). The estimated trajectory will be generated through spline interpolation at ground-truth timestamps in a `.txt` file following the [TUM format](https://github.com/MichaelGrupp/evo/wiki/Formats).
 * 2025-12: The design of a handheld demostrator for RESPLE is now publicly available. Check out our web page [here](https://asig-x.github.io/resple_demonstrator/).
 * 2025-12: Additional evaluation results of RESPLE-LIO and corresponding parameter sets on the [Newer College](https://ori-drs.github.io/newer-college-dataset/) dataset (including its extension) and the [MCD](https://mcdviral.github.io/) dataset are now available on our [web page](https://asig-x.github.io/resple_web/add_evaluation.html). Instructions for testing are given below.
