@@ -9,7 +9,7 @@
   <author>William Talbot</author>
   <author>Kailai Li</author>
   <maintainer email="ziyu.cao@liu.se">Ziyu Cao</maintainer>
-  <maintainer email="kailai.li@rug.nl">Kailai Li</maintainer>
+  <maintainer email="kailai.li@liu.se">Kailai Li</maintainer>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <build_depend>builtin_interfaces</build_depend>

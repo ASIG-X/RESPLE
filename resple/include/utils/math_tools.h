@@ -1,3 +1,16 @@
+/*
+This file is part of RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry.
+ 
+Copyright (c) 2026 Ziyu Cao
+
+Developer: Ziyu Cao <ziyu.cao@liu.se>
+
+For commercial use, please contact me at <ziyu.cao@liu.se> or Kailai Li at <kailai.li@liu.se>.
+
+This file is subject to the terms and conditions outlined in the 'LICENSE' file, 
+which is included as part of this source code package.
+*/
+
 #pragma once
 
 #include <eigen3/Eigen/Geometry>

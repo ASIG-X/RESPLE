@@ -230,10 +230,10 @@ Ziyu Cao (Email: ziyu.cao@liu.se)
 
 William Talbot (Email: wtalbot@ethz.ch)
 
-Kailai Li (Email: kailai.li@rug.nl)
+Kailai Li (Email: kailai.li@liu.se)
 
 ## Credits
 Thanks for [SFUISE](https://github.com/ASIG-X/SFUISE), [ikd-Tree](https://github.com/hku-mars/ikd-Tree), [FAST-LIO](https://github.com/hku-mars/FAST_LIO), [Livox-SDK](https://github.com/Livox-SDK), and [basalt](https://gitlab.com/VladyslavUsenko/basalt).
 
 ## License
-The source code is released under [GPLv3](https://www.gnu.org/licenses/) license.
+The source code is released under [GPLv3](https://www.gnu.org/licenses/) license. For commercial use, please contact Ziyu Cao at <ziyu.cao@liu.se> or Kailai Li at <kailai.li@liu.se> to discuss an alternative license.

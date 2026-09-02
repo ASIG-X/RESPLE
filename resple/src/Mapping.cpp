@@ -1,4 +1,17 @@
-﻿#include <pcl_conversions/pcl_conversions.h>
+﻿/*
+This file is part of RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry.
+ 
+Copyright (c) 2026 Ziyu Cao
+
+Developer: Ziyu Cao <ziyu.cao@liu.se>
+
+For commercial use, please contact me at <ziyu.cao@liu.se> or Kailai Li at <kailai.li@liu.se>.
+
+This file is subject to the terms and conditions outlined in the 'LICENSE' file, 
+which is included as part of this source code package.
+*/
+
+#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/voxel_grid.h>
