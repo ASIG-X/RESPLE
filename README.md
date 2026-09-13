@@ -1,5 +1,5 @@
 # RESPLE: Recursive Spline Estimation for LiDAR-Based Odometry
-[**YouTube**](https://youtu.be/3-xLRRT25ys) | **[arXiv](https://arxiv.org/abs/2504.11580)** | **[Website](https://asig-x.github.io/resple_web/)** | **[IEEE RA-L](https://doi.org/10.1109/LRA.2025.3604758)** | **[Demonstrator](https://asig-x.github.io/resple_demonstrator/)**
+[**YouTube**](https://youtu.be/3-xLRRT25ys) | **[arXiv](https://arxiv.org/abs/2504.11580)** | **[Website](https://asig-x.github.io/resple_web/)** | **[IEEE RA-L](https://doi.org/10.1109/LRA.2025.3604758)** | **[Demonstrator](https://asig-x.github.io/resple_demonstrator/)** | **[Dataset](https://huggingface.co/datasets/ASIG-Lab/RESPLE-Dataset)**
 
 --> [Branch for benchmarking](https://github.com/ASIG-X/RESPLE/tree/feature/benchmark)
 ### News
@@ -58,8 +58,7 @@ cd RESPLE
 docker build --ssh default --tag resple .
 ```
 
-## Own experimental datasets ([LINK to SURFdrive](https://surfdrive.surf.nl/files/index.php/s/lfXfApqVXTLIS9l)) 
-Password: RESPLE2025
+## Own experimental datasets ([Hugging Face](https://huggingface.co/datasets/ASIG-Lab/RESPLE-Dataset)) 
 
 <!-- ![image](doc/real_experiment2.gif) -->
 <!-- [![Watch the video](doc/real_exp_2.png)](https://youtu.be/2OvjGnxszf8) -->
