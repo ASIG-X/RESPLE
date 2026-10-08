@@ -87,6 +87,19 @@ docker build --ssh default --tag resple .
 ## Usage
 For LIO use, change `if_lidar_only` in `resple/config/config_xxx.yaml` to `false`. 
 
+For multi-LiDAR use, list one name per LiDAR under `lidars` and give each its own parameter block (see `resple/config/config_heap_testsite_hoenggerberg.yaml`). Several LiDARs of the same `lidar_type` are supported as long as their names differ, e.g.
+```
+lidars: ["front", "rear"]
+front:
+  topic_lidar: /front/points
+  lidar_type: Hesai
+  ...
+rear:
+  topic_lidar: /rear/points
+  lidar_type: Hesai
+  ...
+```
+
 * [HelmDyn](https://surfdrive.surf.nl/files/index.php/s/lfXfApqVXTLIS9l) dataset (Livox Mid360)
 ```
 source install/setup.bash

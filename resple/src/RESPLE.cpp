@@ -61,35 +61,34 @@ public:
         auto lidar_names = nh->declare_parameter<std::vector<std::string>>("lidars", std::vector<std::string>());
         assert(nh->get_parameter({"lidars"}, lidar_names));
         if (lidar_names.empty()) {
-            LidarConfig lidar(nh, "");
-            lidars.emplace(lidar.type, lidar);
-            lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
+            addLidar(nh, "");
         } else {
             for (const auto& lidar_name : lidar_names) {
-                LidarConfig lidar(nh, lidar_name + ".");
-                lidars.emplace(lidar.type, lidar);
-                lidars_data.emplace(std::piecewise_construct, std::make_tuple(lidar.type), std::make_tuple());
+                addLidar(nh, lidar_name);
             }
         }    
         for (const auto& [lidar_name, lidar] : lidars) {
             if (!lidar.type.compare("Ouster")) {
-                sub_ouster = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
-                        lidar.topic, 200000, std::bind(&RESPLE::ousterLidarCallback<ouster_ros::Point>, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<sensor_msgs::msg::PointCloud2>(lidar.topic, 200000,
+                        [this, name = lidar_name](const sensor_msgs::msg::PointCloud2::SharedPtr msg) { ousterLidarCallback<ouster_ros::Point>(msg, name); }));
             } else if (!lidar.type.compare("Mid70Avia")) {
-                sub_livox = nh->create_subscription<livox_ros_driver::msg::CustomMsg>(
-                        lidar.topic, 200000, std::bind(&RESPLE::livoxLidarCallback, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<livox_ros_driver::msg::CustomMsg>(lidar.topic, 200000,
+                        [this, name = lidar_name](const livox_ros_driver::msg::CustomMsg::SharedPtr msg) { livoxLidarCallback(msg, name); }));
             } else if (!lidar.type.compare("HAP360")) {
-                sub_livox2 = nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-                        lidar.topic, 200000, std::bind(&RESPLE::livoxLidar2Callback, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(lidar.topic, 200000,
+                        [this, name = lidar_name](const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) { livoxLidar2Callback(msg, name); }));
             } else if (!lidar.type.compare("AviaResple")) {
-                sub_livox_avia = nh->create_subscription<livox_interfaces::msg::CustomMsg>(
-                        lidar.topic, 200000, std::bind(&RESPLE::livoxAVIACallback, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<livox_interfaces::msg::CustomMsg>(lidar.topic, 200000,
+                        [this, name = lidar_name](const livox_interfaces::msg::CustomMsg::SharedPtr msg) { livoxAVIACallback(msg, name); }));
             } else if (!lidar.type.compare("Hesai")) {
-                sub_hesai = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
-                        lidar.topic, 200000, std::bind(&RESPLE::hesaiLidarCallback, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<sensor_msgs::msg::PointCloud2>(lidar.topic, 200000,
+                        [this, name = lidar_name](const sensor_msgs::msg::PointCloud2::SharedPtr msg) { hesaiLidarCallback(msg, name); }));
             } else if (!lidar.type.compare("Mid360Boxi")) {
-                sub_livox_mid360_boxi = nh->create_subscription<sensor_msgs::msg::PointCloud2>(
-                        lidar.topic, 200000, std::bind(&RESPLE::livoxMid360BoxiCallback, this, std::placeholders::_1));
+                subs_lidar.push_back(nh->create_subscription<sensor_msgs::msg::PointCloud2>(lidar.topic, 200000,
+                        [this, name = lidar_name](const sensor_msgs::msg::PointCloud2::SharedPtr msg) { livoxMid360BoxiCallback(msg, name); }));
+            } else {
+                RCLCPP_FATAL(nh->get_logger(), "Unknown lidar_type \"%s\" for lidar \"%s\"", lidar.type.c_str(), lidar_name.c_str());
+                exit(1);
             }
         }        
     }
@@ -195,12 +194,7 @@ public:
 private:
 
     std::string node_name = "RESPLE";
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_ouster;
-    rclcpp::Subscription<livox_ros_driver::msg::CustomMsg>::SharedPtr sub_livox;
-    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_livox2;
-    rclcpp::Subscription<livox_interfaces::msg::CustomMsg>::SharedPtr sub_livox_avia;
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_hesai;
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_livox_mid360_boxi;
+    std::vector<rclcpp::SubscriptionBase::SharedPtr> subs_lidar;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cur_scan;
     rclcpp::Publisher<estimate_msgs::msg::Estimate>::SharedPtr pub_est;
     rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr pub_start_time;
@@ -229,6 +223,8 @@ private:
         std::deque<int64_t> t_buff;
         std::mutex mtx_pc;
         Eigen::aligned_deque<PointData> pt_buff;
+        bool if_last_t_init = false;
+        int64_t last_t_ns = 0;
     };
     std::map<std::string, LidarData> lidars_data;    
     Eigen::aligned_deque<PointData> pt_meas;    
@@ -337,6 +333,18 @@ private:
         }
     }     
 
+    // An empty name reads the un-prefixed single-lidar parameters and uses lidar_type as the name.
+    void addLidar(rclcpp::Node::SharedPtr& nh, const std::string& name)
+    {
+        LidarConfig lidar(nh, name.empty() ? "" : name + ".");
+        const std::string key = name.empty() ? lidar.type : name;
+        if (!lidars.try_emplace(key, lidar).second) {
+            RCLCPP_FATAL(nh->get_logger(), "Duplicate lidar name \"%s\" in parameter \"lidars\"", key.c_str());
+            exit(1);
+        }
+        lidars_data.try_emplace(key);
+    }
+
     void getImuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg)
     {
         m_buff.lock();
@@ -345,9 +353,8 @@ private:
     }    
 
     template<typename T>
-    void ousterLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ouster_msg_in)
+    void ousterLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ouster_msg_in, const std::string& name)
     {
-        std::string name = "Ouster";
         const LidarConfig& lidar = lidars.at(name);        
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());
         typename pcl::PointCloud<T>::Ptr pc_last_ouster(new typename pcl::PointCloud<T>());
@@ -356,7 +363,12 @@ private:
         if (plsize == 0) return;
         pc_last->reserve(plsize);
         int64_t time_begin = rclcpp::Time(ouster_msg_in->header.stamp).nanoseconds() - time_offset;
-        static int64_t last_t_ns = time_begin;
+        LidarData& lidar_buffs = lidars_data.at(name);
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;
         pcl::PointXYZINormal pt;
         float blind = lidar.blind;
@@ -374,24 +386,27 @@ private:
                 }
             }
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();        
-        last_t_ns = time_begin + max_ofs_ns;
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;
     }    
 
-    void livoxLidarCallback(const livox_ros_driver::msg::CustomMsg::SharedPtr livox_msg_in)
+    void livoxLidarCallback(const livox_ros_driver::msg::CustomMsg::SharedPtr livox_msg_in, const std::string& name)
     {
-        std::string name = "Mid70Avia";
         const LidarConfig& lidar = lidars.at(name);   
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());     
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
         int64_t time_begin = rclcpp::Time(livox_msg_in->header.stamp).nanoseconds();
-        static int64_t last_t_ns = time_begin;
+        LidarData& lidar_buffs = lidars_data.at(name);
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;
         int valid_point_num = 0;
         pcl::PointXYZINormal pt_pre;
@@ -421,24 +436,27 @@ private:
 
             } 
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();
-        last_t_ns = time_begin + max_ofs_ns;
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;
     }    
 
-    void livoxLidar2Callback(const livox_ros_driver2::msg::CustomMsg::SharedPtr livox_msg_in)
+    void livoxLidar2Callback(const livox_ros_driver2::msg::CustomMsg::SharedPtr livox_msg_in, const std::string& name)
     {
-        std::string name = "HAP360";
         const LidarConfig& lidar = lidars.at(name);     
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());        
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
         int64_t time_begin = rclcpp::Time(livox_msg_in->header.stamp).nanoseconds();
-        static int64_t last_t_ns = time_begin;
+        LidarData& lidar_buffs = lidars_data.at(name);
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;
         int valid_point_num = 0;
         pcl::PointXYZINormal pt_pre;
@@ -467,24 +485,27 @@ private:
                 }
             } 
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();        
-        last_t_ns = time_begin + max_ofs_ns;
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;
     }
 
-     void livoxAVIACallback(const livox_interfaces::msg::CustomMsg::SharedPtr livox_msg_in)
+     void livoxAVIACallback(const livox_interfaces::msg::CustomMsg::SharedPtr livox_msg_in, const std::string& name)
      {
-        std::string name = "AviaResple";
         const LidarConfig& lidar = lidars.at(name);       
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());      
         int plsize = livox_msg_in->point_num;
         if (plsize == 0) return;
         pc_last->reserve(plsize);
         int64_t time_begin = rclcpp::Time(livox_msg_in->header.stamp).nanoseconds();
-        static int64_t last_t_ns = time_begin;
+        LidarData& lidar_buffs = lidars_data.at(name);
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;
         int valid_point_num = 0;
         pcl::PointXYZINormal pt_pre;
@@ -514,17 +535,15 @@ private:
                 }
             }
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();
-        last_t_ns = time_begin + max_ofs_ns;
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;
      }        
 
-    void hesaiLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr hesai_msg_in)
+    void hesaiLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr hesai_msg_in, const std::string& name)
 	{
-        std::string name = "Hesai";
         const LidarConfig& lidar = lidars.at(name);    
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());    
         pcl::PointCloud<hesai_ros::Point>::Ptr pc_last_hesai(new pcl::PointCloud<hesai_ros::Point>());
@@ -534,7 +553,12 @@ private:
         pc_last->reserve(plsize);
         rclcpp::Time timestamp_begin = rclcpp::Time(hesai_msg_in->header.stamp);
         int64_t time_begin = timestamp_begin.nanoseconds();
-        static int64_t last_t_ns = time_begin;
+        LidarData& lidar_buffs = lidars_data.at(name);
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;        
         pcl::PointXYZINormal pt;
         float blind = lidar.blind;
@@ -556,17 +580,15 @@ private:
                 }
             }
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();        
-        last_t_ns = time_begin + max_ofs_ns;
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;
 	}     
 
-    void livoxMid360BoxiCallback(const sensor_msgs::msg::PointCloud2::SharedPtr livox_msg_in)
+    void livoxMid360BoxiCallback(const sensor_msgs::msg::PointCloud2::SharedPtr livox_msg_in, const std::string& name)
 	{
-        std::string name = "Mid360Boxi";
         const LidarConfig& lidar = lidars.at(name);   
         pcl::PointCloud<pcl::PointXYZINormal>::Ptr pc_last(new pcl::PointCloud<pcl::PointXYZINormal>());     
         pcl::PointCloud<livox_mid360_boxi::Point>::Ptr pc_last_livox(new pcl::PointCloud<livox_mid360_boxi::Point>());
@@ -576,7 +598,12 @@ private:
         pc_last->reserve(plsize);
         rclcpp::Time timestamp_begin = rclcpp::Time(livox_msg_in->header.stamp);
         int64_t time_begin = timestamp_begin.nanoseconds();
-        static int64_t last_t_ns = time_begin;   
+        LidarData& lidar_buffs = lidars_data.at(name);   
+        if (!lidar_buffs.if_last_t_init) {
+            lidar_buffs.last_t_ns = time_begin;
+            lidar_buffs.if_last_t_init = true;
+        }
+        int64_t last_t_ns = lidar_buffs.last_t_ns;
         int64_t max_ofs_ns = 0;         
         pcl::PointXYZINormal pt;
         float blind = lidar.blind;
@@ -596,12 +623,11 @@ private:
                 }
             }
         }
-        LidarData& lidar_buffs = lidars_data.at(name);
         lidar_buffs.mtx_pc.lock();
         lidar_buffs.pc_buff.push_back(pc_last->points);
         lidar_buffs.t_buff.push_back(time_begin);
         lidar_buffs.mtx_pc.unlock();     
-        last_t_ns = time_begin + max_ofs_ns;   
+        lidar_buffs.last_t_ns = time_begin + max_ofs_ns;   
 	}      
 
     void publishFrameWorld() 
